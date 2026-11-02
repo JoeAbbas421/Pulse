@@ -210,6 +210,34 @@ a.btn { text-decoration: none; display: inline-block; }
 .qbtn span { font-size: 11px; color: var(--muted); }
 .qbtn:active { transform: scale(.96); background: var(--surface-strong); }
 .qbtn:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+.setform { display: grid; grid-template-columns: 1fr 64px 64px 46px; gap: 8px; align-items: center; }
+.setform select, .setform input { font: 500 16px var(--body); color: var(--fg); background: rgba(0,0,0,.5); border: 1px solid var(--line); border-radius: 14px; padding: 11px 8px; width: 100%; min-width: 0; }
+.exgroup { margin-top: 12px; }
+.exhead { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.exhead b { font-size: 14.5px; } .exhead span { font-size: 11.5px; color: var(--muted); }
+.setchips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.setchip { appearance: none; border: 1px solid var(--line); background: var(--surface-strong); color: var(--fg); border-radius: 10px; padding: 6px 10px; font: 600 13px var(--mono); cursor: pointer; }
+.liftrow { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.liftrow .lt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.liftrow .lt span { font-size: 12px; color: var(--muted); } .liftrow .lt em { font-style: normal; font-weight: 700; }
+.liftrow .spark { width: 90px; height: 30px; flex: none; }
+.painpick { margin-top: 10px; }
+.painrow { display: grid; grid-template-columns: repeat(11, 1fr); gap: 3px; margin-top: 6px; }
+.pchip { appearance: none; border: 1px solid var(--line); background: var(--surface-strong); color: var(--fg); border-radius: 9px; padding: 8px 0; font: 700 13px var(--body); cursor: pointer; min-width: 0; }
+.pchip.on { background: hsl(calc(130 - var(--h) * 1.3) 75% 45%); border-color: transparent; color: #fff; }
+.battery { display: flex; align-items: center; gap: 12px; }
+.batt { flex: 1; height: 22px; border-radius: 8px; border: 2px solid rgba(255,255,255,.25); padding: 2px; position: relative; }
+.batt::after { content: ""; position: absolute; right: -7px; top: 5px; width: 4px; height: 8px; border-radius: 0 2px 2px 0; background: rgba(255,255,255,.25); }
+.batt .fill { height: 100%; border-radius: 4px; }
+.battery b { font: 700 28px var(--display); font-variant-numeric: tabular-nums; min-width: 2.2ch; text-align: right; }
+.sigrow { display: grid; grid-template-columns: 10px auto 1fr; gap: 10px; align-items: center; font-size: 13px; }
+.sigrow span:last-child { color: var(--muted); text-align: right; font-size: 12px; }
+.sigrow .sd { width: 10px; height: 10px; border-radius: 50%; }
+.report { display: flex; gap: 18px; align-items: center; }
+.bigletter { font: 800 56px var(--display); line-height: 1; min-width: 1.6ch; text-align: center; }
+.grades { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(62px, 1fr)); gap: 8px; }
+.grades div { display: flex; flex-direction: column; }
+.grades b { font: 700 18px var(--display); } .grades span { font-size: 11px; color: var(--muted); }
 </style>
 </head><body>
 
@@ -570,8 +598,11 @@ function todayScreen() {
       <div class="pills">${pill("Sleep score", n ? sleepScore(n) : "—", C.violet)}${pill("HRV", latest("hrv") ? Math.round(latest("hrv").value) + " ms" : "—", C.sky)}${pill("Resting HR", latest("restingHeartRate") ? Math.round(latest("restingHeartRate").value) + " bpm" : "—", C.pink)}</div>
     </div>
     ${checkupCard(true)}
+    ${sickCard(false)}
     ${quickBlock()}
+    ${batteryCard()}
     ${activityRings()}
+    ${weekCard()}
     ${hr.length > 1 ? `<button class="card tap" data-metric="avgHeartRate" style="text-align:left;color:inherit;font:inherit">${title("Heart rate today", "heart", C.pink, now ? now + " bpm now" : "")}${hrChart(hr)}</button>` : ""}
     ${["Activity", "Heart", "Body & recovery"].map(cat => `<h2>${cat}</h2>${tiles(METRICS.filter(m => m.cat === cat).map(m => m.id))}`).join("")}
     ${d.lastSync ? `<p class="foot">Updated ${time(d.lastSync)}</p>` : ""}
@@ -606,6 +637,7 @@ function heartScreen() {
     <div class="card status"><span class="badge" style="background:${alerts.length ? C.amber : C.mint}22">${icon(alerts.length ? "alert" : "shield", alerts.length ? C.amber : C.mint)}</span>
       <div><strong>${alerts.length ? `${alerts.length} irregular rhythm alert${alerts.length > 1 ? "s" : ""}` : "No irregular rhythm detected"}</strong>
       <p>${alerts.length ? `Most recent ${alerts[0].toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}. Talk to a doctor about these.` : "Your Air checks your heart rhythm for signs of AFib while you're still or asleep."}</p></div></div>
+    ${sickCard(true)}
     ${tiles(["restingHeartRate", "hrv", "avgHeartRate", "zoneMinutes", "vo2Max", "spo2"])}
   </div>`;
 }
@@ -619,7 +651,7 @@ function activityScreen() {
     <div class="card status"><div class="ringwrap" style="width:64px;height:64px">${ring(week / 150, [C.pink, C.amber], 64, 9)}</div>
       <div><strong>${Math.round(week)} / 150 zone minutes</strong><p>${week >= 150 ? "Weekly target hit. Nice work." : `${Math.round(150 - week)} more this week to hit the WHO target.`}</p></div></div>
     ${tiles(METRICS.filter(m => m.cat === "Activity").map(m => m.id))}
-    ${sessionsList()}
+    ${sessionsList()}${liftsCard()}${physioCard()}
     <h2>Workouts your Air logged</h2>
     ${w.length ? w.map(x => `<div class="card workout"><span class="ic">${icon(workoutIcon(x.type))}</span>
       <div class="mid"><b>${esc(x.type)}</b><span>${x.start.toLocaleString([], { weekday: "long", hour: "numeric", minute: "2-digit" })}</span></div>
@@ -1163,7 +1195,7 @@ document.addEventListener("click", e => {
   else if (a === "cancel") { store.set("pulse.active", null); closeSheet(); render(); }
   else if (a === "end") {
     const act = W.active(); if (!act) return;
-    const sess = { id: String(act.start), sport: act.sport, start: act.start, end: Date.now() };
+    const sess = { id: String(act.start), sport: act.sport, start: act.start, end: Date.now(), ...(act.sets ? { sets: act.sets } : {}), ...(act.painBefore != null ? { painBefore: act.painBefore } : {}) };
     if (sess.end - sess.start < 60000) { store.set("pulse.active", null); closeSheet(); render(); return; }
     W.save([sess, ...W.sessions()]); store.set("pulse.active", null); render(); openSession(sess.id);
   }
@@ -1253,6 +1285,262 @@ document.addEventListener("click", async e => {
 });
 setInterval(() => { const b = BED.active(); if (b) document.querySelectorAll("[data-bedclock]").forEach(el => { el.textContent = fmtDur((Date.now() - b.start) / 60000); }); }, 30000);
 
+/* ---------- extras: lift tracker, body battery, sick warning, weekly report card, physio progress ---------- */
+const LIFT_SPORTS = ["Weightlifting", "Strength"];
+const EXERCISES = ["Bench press", "Squat", "Deadlift", "Overhead press", "Barbell row", "Pull-up", "Lat pulldown", "Leg press", "Romanian deadlift",
+  "Incline dumbbell press", "Dumbbell shoulder press", "Hip thrust", "Lunges", "Leg curl", "Leg extension", "Cable row", "Bicep curl", "Tricep pushdown", "Dips", "Other"];
+const LOWER = ["Squat", "Deadlift", "Leg press", "Romanian deadlift", "Hip thrust", "Lunges"];
+const e1rm = (kg, reps) => reps <= 1 ? kg : kg * (1 + Math.min(reps, 12) / 30); // Epley estimate of your one-rep max
+const r05 = v => Math.round(v * 2) / 2;
+
+function readTarget(where) { return where === "active" ? W.active() : W.sessions().find(x => x.id === where); }
+function editTarget(where, fn) {
+  if (where === "active") { const a = W.active(); if (!a) return; fn(a); store.set("pulse.active", JSON.stringify(a)); return a; }
+  const list = W.sessions(), s = list.find(x => x.id === where); if (!s) return; fn(s); W.save(list); return s;
+}
+
+/* --- lift tracker --- */
+function liftHistory() { // per exercise, oldest first: [{date, sets, top, e1, vol}]
+  const map = {};
+  W.sessions().slice().reverse().forEach(s => {
+    const by = {};
+    (s.sets || []).forEach(x => (by[x.ex] = by[x.ex] || []).push(x));
+    Object.entries(by).forEach(([ex, sets]) => {
+      const top = sets.reduce((a, b) => e1rm(b.kg, b.reps) > e1rm(a.kg, a.reps) ? b : a);
+      (map[ex] = map[ex] || []).push({ date: new Date(s.start), sessionId: s.id, sets, top, e1: e1rm(top.kg, top.reps), vol: sets.reduce((a, b) => a + b.kg * b.reps, 0) });
+    });
+  });
+  return map;
+}
+function liftAdvice(ex, hist) {
+  const h = hist[ex]; if (!h || !h.length) return null;
+  const last = h[h.length - 1], prev = h[h.length - 2], step = LOWER.includes(ex) ? 5 : 2.5;
+  const topKg = Math.max(...last.sets.map(s => s.kg)), atTop = last.sets.filter(s => s.kg === topKg);
+  const ch = charge();
+  if (ch != null && ch < 50) return { tone: "amber", text: `Charge is ${ch} today. Stay at ${topKg} kg or less and stop 2 reps short of failure.` };
+  if (prev) {
+    const pTop = Math.max(...prev.sets.map(s => s.kg));
+    const pReps = Math.max(...prev.sets.filter(s => s.kg === pTop).map(s => s.reps)), lReps = Math.max(...atTop.map(s => s.reps));
+    if (pTop === topKg && lReps < pReps - 1) return { tone: "amber", text: `Reps dropped at ${topKg} kg (${pReps} → ${lReps}). Hold the weight and recover before pushing.` };
+  }
+  if (atTop.length >= 2 && atTop.every(s => s.reps >= 8)) return { tone: "mint", text: `Ready to progress: try ${r05(topKg + step)} kg next time.` };
+  return { tone: "sky", text: `Stay at ${topKg} kg and aim for one more rep per set.` };
+}
+function setLogger(where) {
+  const t = readTarget(where); if (!t) return "";
+  const sets = t.sets || [], last = store.get("pulse.lastEx") || "Bench press";
+  const prevSet = [...sets].reverse().find(s => s.ex === last) || null;
+  const groups = {}; sets.forEach((s, i) => (groups[s.ex] = groups[s.ex] || []).push({ ...s, i }));
+  return `<div class="card logger" id="logger-${where}" style="text-align:left">${title("Sets", "lift", C.mint, sets.length ? `${sets.length} sets · ${Math.round(sets.reduce((a, b) => a + b.kg * b.reps, 0)).toLocaleString()} kg moved` : "")}
+    <div class="setform">
+      <select id="lfEx-${where}" aria-label="Exercise">${EXERCISES.map(e => `<option ${e === last ? "selected" : ""}>${e}</option>`).join("")}</select>
+      <input id="lfKg-${where}" inputmode="decimal" placeholder="kg" aria-label="Weight in kg" value="${prevSet ? prevSet.kg : ""}">
+      <input id="lfReps-${where}" inputmode="numeric" placeholder="reps" aria-label="Reps" value="${prevSet ? prevSet.reps : ""}">
+      <button class="iconbtn send" data-x="addset" data-where="${where}" aria-label="Add set">+</button>
+    </div>
+    ${Object.entries(groups).map(([ex, list]) => { const top = list.reduce((a, b) => e1rm(b.kg, b.reps) > e1rm(a.kg, a.reps) ? b : a);
+      return `<div class="exgroup"><div class="exhead"><b>${esc(ex)}</b><span>best ${top.kg} kg × ${top.reps} · est. max ${Math.round(e1rm(top.kg, top.reps))} kg</span></div>
+        <div class="setchips">${list.map(s => `<button class="setchip" data-x="delset" data-where="${where}" data-i="${s.i}" aria-label="Remove set ${s.kg} kg by ${s.reps}">${s.kg}×${s.reps}</button>`).join("")}</div></div>`; }).join("")}
+    ${sets.length ? `<p class="note" style="margin-top:8px">Tap a set to remove it.</p>` : `<p class="note" style="margin-top:8px">Log each set as you finish it. Pulse fills in your last weight and reps.</p>`}
+  </div>`;
+}
+function liftsCard() {
+  const hist = liftHistory(), names = Object.keys(hist).sort((a, b) => hist[b][hist[b].length - 1].date - hist[a][hist[a].length - 1].date);
+  if (!names.length) return "";
+  return `<h2>Your lifts</h2><div class="card">${title("Strength progress", "lift", C.mint, "estimated max")}<div class="stack" style="gap:14px">${names.slice(0, 8).map(ex => {
+    const h = hist[ex], last = h[h.length - 1], first = h[0], adv = liftAdvice(ex, hist);
+    const ch = h.length > 1 ? Math.round((last.e1 / first.e1 - 1) * 100) : null;
+    return `<div class="liftrow"><div class="lt"><b>${esc(ex)}</b><span>${last.top.kg} kg × ${last.top.reps} · ${Math.round(last.e1)} kg max${ch != null ? ` · <em style="color:${ch >= 0 ? C.mint : C.amber}">${ch >= 0 ? "+" : ""}${ch}%</em>` : ""}</span>
+      ${adv ? `<span style="color:${C[adv.tone]}">${adv.text}</span>` : ""}</div>${h.length > 1 ? spark(h.map(x => ({ date: x.date, value: x.e1 })), C.mint) : ""}</div>`; }).join("")}</div></div>`;
+}
+
+/* --- hydro physio progress --- */
+const PHYSIO = "Hydro physio";
+function painPicker(where, key, label) {
+  const t = readTarget(where), v = t ? t[key] : null;
+  return `<div class="painpick"><div class="exhead"><b>${label}</b><span>${v != null ? `${v} / 10` : "0 = none, 10 = worst"}</span></div>
+    <div class="painrow">${[...Array(11)].map((_, i) => `<button class="pchip${v === i ? " on" : ""}" style="--h:${Math.round(i * 10)}" data-x="pain" data-k="${key}" data-where="${where}" data-v="${i}" aria-pressed="${v === i}">${i}</button>`).join("")}</div></div>`;
+}
+function physioBlock(where, live) {
+  return `<div class="card" id="physio-${where}" style="text-align:left">${title("Pain", "temp", C.amber, esc(store.get("pulse.physioArea") || ""))}
+    ${painPicker(where, "painBefore", "Before the session")}${live ? "" : painPicker(where, "painAfter", "After the session")}
+    <p class="note" style="margin-top:8px">Logging pain each time shows whether your rehab is working.</p></div>`;
+}
+function physioCard() {
+  const ss = W.sessions().filter(s => s.sport === PHYSIO).slice().reverse();
+  const area = store.get("pulse.physioArea") || "";
+  const pains = ss.filter(s => s.painBefore != null);
+  let trend = "Log your pain before each Hydro physio session to see your recovery trend here.";
+  if (pains.length >= 2) { const a = pains[0].painBefore, b = pains[pains.length - 1].painBefore;
+    trend = b < a ? `Pain before sessions is down from ${a} to ${b} over ${pains.length} sessions. Your rehab is working.` : b > a ? `Pain before sessions is up from ${a} to ${b}. Mention this to your physio.` : `Pain is steady at ${b}. Keep going and tell your physio if it doesn't move.`; }
+  return `<h2>Physio progress</h2><div class="card">${title("Hydro physio", "swim", C.sky, ss.length ? `${ss.length} sessions · ${fmtDur(ss.reduce((a, s) => a + (s.end - s.start) / 60000, 0))}` : "")}
+    <label class="field" for="physioArea" style="margin-bottom:12px">What are you rehabbing?<input id="physioArea" value="${esc(area)}" placeholder="e.g. left knee, ACL" style="font-family:var(--body);font-size:16px"></label>
+    ${pains.length >= 2 ? `<div class="painchart">${painChart(pains)}</div>` : ""}
+    <p style="margin:8px 0 0">${trend}</p></div>`;
+}
+function painChart(ps) {
+  const Wd = 340, H = 110, L = 18, R = 8, T = 10, B = 20, x = i => L + (Wd - L - R) * i / Math.max(ps.length - 1, 1), y = v => T + (H - T - B) * (1 - v / 10);
+  const line = k => ps.map((s, i) => s[k] != null ? `${i && ps[i - 1][k] != null ? "L" : "M"}${x(i)},${y(s[k])}` : "").join("");
+  return `<svg class="chart" viewBox="0 0 ${Wd} ${H}" role="img" aria-label="Pain before and after each physio session">
+    ${[0, 5, 10].map(v => `<line x1="${L}" x2="${Wd - R}" y1="${y(v)}" y2="${y(v)}" stroke="rgba(255,255,255,.08)"/><text x="0" y="${y(v) + 3}">${v}</text>`).join("")}
+    <path d="${line("painAfter")}" fill="none" stroke="${C.sky}" stroke-width="2" stroke-dasharray="4 4"/>
+    <path d="${line("painBefore")}" fill="none" stroke="${C.amber}" stroke-width="2.4"/>
+    ${ps.map((s, i) => s.painBefore != null ? `<circle cx="${x(i)}" cy="${y(s.painBefore)}" r="3.5" fill="${C.amber}"/>` : "").join("")}
+    <text x="${L}" y="${H - 4}">${new Date(ps[0].start).toLocaleDateString([], { month: "short", day: "numeric" })}</text><text x="${Wd - R}" y="${H - 4}" text-anchor="end">${new Date(ps[ps.length - 1].start).toLocaleDateString([], { month: "short", day: "numeric" })}</text>
+  </svg><p class="note"><span style="color:${C.amber}">━</span> before &nbsp; <span style="color:${C.sky}">┅</span> after</p>`;
+}
+
+/* --- body battery: starts at your morning Charge, drains with every awake minute, faster in heart-rate zones --- */
+function battery() {
+  const ch = charge(); if (ch == null || !S.data) return null;
+  const n = lastNight(), today0 = startOfDay(new Date());
+  const wake = n && n.end > today0 - 6 * 3600000 ? n.end : today0;
+  const hp = hrProfile(), hrr = Math.max(hp.max - hp.rest, 40);
+  let lvl = ch, prev = +wake, used = 0;
+  const pts = [[+wake, lvl]];
+  for (const p of S.data.heart.filter(p => p.time > wake && p.time <= Date.now())) {
+    const dt = Math.min((p.time - prev) / 60000, 15); prev = +p.time;
+    const f = (p.bpm - hp.rest) / hrr;
+    const rate = f < .15 ? .03 : f < .4 ? .07 : f < .6 ? .25 : f < .85 ? .5 : .9;
+    const d = rate * dt; used += d; lvl = Math.max(5, lvl - d); pts.push([+p.time, lvl]);
+  }
+  const tail = Math.min((Date.now() - prev) / 60000, 60) * .03; lvl = Math.max(5, lvl - tail); pts.push([Date.now(), lvl]);
+  return { now: Math.round(lvl), start: ch, pts, wake };
+}
+const batteryLabel = v => v >= 70 ? "Plenty left. Go hard today." : v >= 45 ? "Enough for a normal session." : v >= 25 ? "Running low. Keep it light." : "Empty. Rest and sleep early.";
+function batteryCard() {
+  const b = battery(); if (!b) return "";
+  const col = b.now >= 45 ? C.mint : b.now >= 25 ? C.amber : "#ff1033";
+  const Wd = 340, H = 64, t0 = b.pts[0][0], t1 = Math.max(Date.now(), t0 + 3600000), x = t => 2 + (Wd - 4) * (t - t0) / (t1 - t0), y = v => 4 + (H - 8) * (1 - v / 100);
+  const line = smooth(b.pts.map(([t, v]) => [x(t), y(v)]));
+  return `<div class="card">${title("Body battery", "bolt", col, `started at ${b.start}`)}
+    <div class="battery"><div class="batt"><div class="fill" style="width:${b.now}%;background:${col}"></div></div><b style="color:${col}">${b.now}</b></div>
+    <p style="margin:8px 0 0;font-weight:700">${batteryLabel(b.now)}</p>
+    <svg class="chart" viewBox="0 0 ${Wd} ${H}" style="margin-top:8px" aria-hidden="true"><path d="${line}" fill="none" stroke="${col}" stroke-width="2"/></svg>
+    <p class="note">Pulse's estimate. It starts each morning at your Charge, drains slowly while you're awake and faster in your heart-rate zones.</p></div>`;
+}
+
+/* --- sick early warning --- */
+function sickCheck() {
+  const out = [];
+  const add = (id, label, test, show) => {
+    const s = series(id); if (s.length < 5) return;
+    const last = s[s.length - 1]; if (Date.now() - last.date > 2.5 * DAY) return;
+    const base = avg(s.slice(-15, -1).map(p => p.value));
+    out.push({ id, label, on: test(last.value, base), text: show(last.value, base) });
+  };
+  add("skinTemp", "Skin temperature", v => v >= .5, v => `${v > 0 ? "+" : ""}${v.toFixed(1)} °C vs your baseline`);
+  add("restingHeartRate", "Resting heart rate", (v, b) => v - b >= 3, (v, b) => `${Math.round(v)} bpm (normal ${Math.round(b)})`);
+  add("breathingRate", "Breathing rate", (v, b) => v - b >= 1, (v, b) => `${v.toFixed(1)} br/min (normal ${b.toFixed(1)})`);
+  add("hrv", "HRV", (v, b) => v <= b * .85, (v, b) => `${Math.round(v)} ms (normal ${Math.round(b)})`);
+  const n = out.filter(x => x.on).length;
+  return { signals: out, count: n, level: n >= 3 ? "high" : n === 2 ? "watch" : "ok" };
+}
+function sickCard(always) {
+  const c = sickCheck(); if (!c.signals.length || (!always && c.level === "ok")) return "";
+  const col = c.level === "high" ? "#ff1033" : c.level === "watch" ? C.amber : C.mint;
+  const head = c.level === "high" ? "Your body may be fighting something" : c.level === "watch" ? "Two warning signs last night" : "No signs of getting sick";
+  const msg = c.level === "high" ? "Several signals moved together, which often shows up a day or two before you feel ill. Take a rest day, drink more and sleep early." : c.level === "watch" ? "Could be a hard session, alcohol or stress, or the start of a bug. Go easy today and see how tomorrow looks." : "Temperature, resting heart rate, breathing and HRV all look normal for you.";
+  return `<div class="card" style="border-color:${col}66">${title("Body check", c.level === "ok" ? "shield" : "alert", col, c.level === "ok" ? "" : `${c.count} of ${c.signals.length} signals`)}
+    <strong style="display:block;font-size:16px">${head}</strong><p class="note" style="margin:4px 0 12px;color:var(--fg);opacity:.8">${msg}</p>
+    <div class="stack" style="gap:8px">${c.signals.map(s => `<div class="sigrow"><span class="sd" style="background:${s.on ? col : "rgba(255,255,255,.18)"}"></span><b>${s.label}</b><span>${s.text}</span></div>`).join("")}</div>
+    <p class="note" style="margin-top:10px">Not a diagnosis. If you feel unwell or this lasts several days, see a doctor.</p></div>`;
+}
+
+/* --- weekly report card --- */
+const letter = s => s == null ? "—" : (s >= 90 ? "A" : s >= 80 ? "B" : s >= 70 ? "C" : s >= 60 ? "D" : "F") + (s >= 60 && s < 100 && s % 10 >= 7 ? "+" : "");
+function weekReport() {
+  const rows = [], cut = startOfDay(new Date()) - 7 * DAY;
+  const nights = mainNights().filter(n => n.end > cut);
+  if (nights.length >= 3) { const sc = avg(nights.map(sleepScore)), hrs = avg(nights.map(n => n.asleep)) / 60;
+    rows.push({ k: "Sleep", s: Math.round(sc), why: `${hrs.toFixed(1)} h a night on average, sleep score ${Math.round(sc)}.` }); }
+  const zm = series("zoneMinutes").slice(-7).reduce((a, p) => a + p.value, 0), sessions = W.sessions().filter(s => s.start > cut).length + (S.data?.workouts || []).filter(w => w.start > cut).length;
+  if (series("zoneMinutes").length) rows.push({ k: "Training", s: Math.round(Math.min(zm / 150, 1.05) * 95), why: `${Math.round(zm)} of 150 zone minutes, ${sessions} workouts.` });
+  const hrv = series("hrv").map(p => p.value), rhr = series("restingHeartRate").map(p => p.value);
+  if (hrv.length >= 10 && rhr.length >= 10) { const hp = (avg(hrv.slice(-7)) / avg(hrv.slice(-14, -7)) - 1) * 100, rd = avg(rhr.slice(-7)) - avg(rhr.slice(-14, -7));
+    rows.push({ k: "Recovery", s: Math.round(clamp(85 + hp * 1.5 - rd * 6)), why: `HRV ${hp >= 0 ? "up" : "down"} ${Math.abs(hp).toFixed(0)}% and resting HR ${rd >= 0 ? "up" : "down"} ${Math.abs(rd).toFixed(1)} bpm vs the week before.` }); }
+  if (nights.length >= 4) { const mins = nights.map(n => { const d = new Date(n.start); let m = d.getHours() * 60 + d.getMinutes(); if (m < 720) m += 1440; return m; });
+    const mu = avg(mins), sd = Math.sqrt(avg(mins.map(m => (m - mu) ** 2)));
+    rows.push({ k: "Consistency", s: Math.round(clamp(100 - Math.max(sd - 20, 0))), why: `Bedtime varied by about ${Math.round(sd)} minutes. Under 30 is ideal.` }); }
+  const steps = series("steps").slice(-8, -1).map(p => p.value);
+  if (steps.length >= 3) { const a = avg(steps); rows.push({ k: "Movement", s: Math.round(Math.min(a / 10000, 1.05) * 95), why: `${Math.round(a).toLocaleString()} steps a day on average.` }); }
+  return { rows, overall: rows.length ? Math.round(avg(rows.map(r => r.s))) : null };
+}
+const gradeColor = s => s >= 80 ? C.mint : s >= 70 ? C.sky : s >= 60 ? C.amber : "#ff1033";
+function weekCard() {
+  const w = weekReport(); if (!w.rows.length) return "";
+  return `<button class="card tap" data-x="week" style="text-align:left;color:inherit;font:inherit">${title("Week report card", "cal", C.violet, "last 7 days")}
+    <div class="report"><div class="bigletter" style="color:${gradeColor(w.overall)}">${letter(w.overall)}</div>
+    <div class="grades">${w.rows.map(r => `<div><b style="color:${gradeColor(r.s)}">${letter(r.s)}</b><span>${r.k}</span></div>`).join("")}</div></div>
+    <p class="note" style="margin-top:8px">Tap for details and next week's goals →</p></button>`;
+}
+function weekSheet() {
+  const w = weekReport();
+  openSheet(`<div class="stack" style="margin-top:10px">
+    <div><div class="eyebrow">Week report card · last 7 days</div><h1>Overall ${letter(w.overall)}</h1></div>
+    ${w.rows.map(r => `<div class="card status"><span class="badge" style="background:${gradeColor(r.s)}22;color:${gradeColor(r.s)};font:800 18px var(--display)">${letter(r.s)}</span><div><strong>${r.k}</strong><p>${r.why}</p></div></div>`).join("")}
+    <button class="btn primary" data-x="weekgoals">${icon("claude")} Get 3 goals for next week from Claude</button>
+    <p class="note">Grades are Pulse's own, based only on your Fitbit Air data and the sessions you logged.</p></div>`);
+}
+
+/* --- wiring --- */
+const baseLiveScreen = liveScreen;
+liveScreen = function () {
+  baseLiveScreen();
+  const act = W.active(), box = document.querySelector("#sheetBody .live"); if (!act || !box) return;
+  const extra = LIFT_SPORTS.includes(act.sport) ? setLogger("active") : act.sport === PHYSIO ? physioBlock("active", true) : "";
+  if (extra) box.querySelector('[data-w="end"]').insertAdjacentHTML("beforebegin", `<div style="margin:18px 0 6px">${extra}</div>`);
+};
+const baseOpenSession = openSession;
+openSession = async function (id, refresh) {
+  await baseOpenSession(id, refresh);
+  const s = W.sessions().find(x => x.id === id), root = document.querySelector("#sheetBody .stack"); if (!s || !root) return;
+  let extra = "";
+  if (LIFT_SPORTS.includes(s.sport) || s.sets?.length) {
+    const hist = liftHistory(), exs = [...new Set((s.sets || []).map(x => x.ex))];
+    extra += setLogger(s.id) + exs.map(ex => { const a = liftAdvice(ex, hist); return a ? `<div class="card status" style="padding:12px 14px"><span class="badge" style="width:36px;height:36px;background:${C[a.tone]}22">${icon("lift", C[a.tone])}</span><div><strong style="font-size:14px">${esc(ex)}</strong><p>${a.text}</p></div></div>` : ""; }).join("");
+  }
+  if (s.sport === PHYSIO) extra += physioBlock(s.id, false);
+  if (!extra) return;
+  const anchor = root.querySelector('[data-c="debrief"]');
+  anchor ? anchor.insertAdjacentHTML("beforebegin", extra) : root.insertAdjacentHTML("beforeend", extra);
+};
+
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-x]"); if (!t) return;
+  const a = t.dataset.x, where = t.dataset.where;
+  if (a === "addset") {
+    const ex = document.getElementById("lfEx-" + where).value, kg = num(document.getElementById("lfKg-" + where).value), reps = Math.round(num(document.getElementById("lfReps-" + where).value) || 0);
+    if (kg == null || kg < 0 || kg > 500 || !reps || reps > 100) { document.getElementById(kg == null || kg < 0 || kg > 500 ? "lfKg-" + where : "lfReps-" + where).focus(); return; }
+    store.set("pulse.lastEx", ex);
+    editTarget(where, s => { s.sets = [...(s.sets || []), { ex, kg: r05(kg), reps, t: Date.now() }]; });
+    document.getElementById("logger-" + where).outerHTML = setLogger(where);
+  } else if (a === "delset") {
+    editTarget(where, s => { s.sets = (s.sets || []).filter((_, i) => i !== +t.dataset.i); });
+    document.getElementById("logger-" + where).outerHTML = setLogger(where);
+  } else if (a === "pain") {
+    editTarget(where, s => { s[t.dataset.k] = +t.dataset.v; });
+    document.getElementById("physio-" + where).outerHTML = physioBlock(where, where === "active");
+  } else if (a === "week") weekSheet();
+  else if (a === "weekgoals") {
+    const w = weekReport(); closeSheet();
+    sendChat(`Here's my week report card: overall ${letter(w.overall)}. ${w.rows.map(r => `${r.k} ${letter(r.s)}: ${r.why}`).join(" ")} Give me 3 specific goals for next week that fit my sports and goals.`);
+  }
+});
+document.addEventListener("change", e => { if (!/^lfEx-/.test(e.target.id)) return; store.set("pulse.lastEx", e.target.value); const where = e.target.id.slice(5), el = document.getElementById("logger-" + where); if (el) el.outerHTML = setLogger(where); });
+document.addEventListener("change", e => { if (e.target.id === "physioArea") store.set("pulse.physioArea", e.target.value.trim() || null); });
+
+/* Demo: a few lifting and physio sessions so the new screens have something to show. */
+if (!canUseGoogle() && !store.get("pulse.demoExtras")) {
+  const now = Date.now(), mk = (daysAgo, sport, mins, extra) => { const start = now - daysAgo * DAY - 5 * 3600000; return { id: String(start), sport, start, end: start + mins * 60000, ...extra }; };
+  const lift = (b, s, d) => [["Bench press", b, 8], ["Bench press", b, 8], ["Bench press", b, 7], ["Squat", s, 6], ["Squat", s, 6], ["Deadlift", d, 5]].map(([ex, kg, reps]) => ({ ex, kg, reps, t: now }));
+  const extra = [mk(12, "Weightlifting", 62, { sets: lift(70, 90, 110) }), mk(8, "Weightlifting", 58, { sets: lift(72.5, 95, 115) }), mk(3, "Weightlifting", 65, { sets: lift(75, 95, 120).map(x => x.ex === "Bench press" ? { ...x, reps: 8 } : x) }),
+    mk(13, PHYSIO, 45, { painBefore: 6, painAfter: 4 }), mk(10, PHYSIO, 45, { painBefore: 5, painAfter: 4 }), mk(6, PHYSIO, 50, { painBefore: 5, painAfter: 3 }), mk(2, PHYSIO, 50, { painBefore: 3, painAfter: 2 })];
+  W.save([...W.sessions(), ...extra].sort((a, b) => b.start - a.start));
+  store.set("pulse.physioArea", "Left knee");
+  store.set("pulse.demoExtras", "1");
+}
+
 /* ---------- Claude coach: reads a summary of your data, gives a daily checkup and answers questions ---------- */
 /* Three ways to reach Claude, best first:
    1. Your own Anthropic API key (on Pulse's own web address): calls Claude straight from this phone.
@@ -1323,6 +1611,11 @@ function healthSummary() {
     pulseCharge: charge(),
     heartRateToday: hr.length ? { latest: Math.round(hr[hr.length - 1]), low: Math.round(Math.min(...hr)), high: Math.round(Math.max(...hr)), readings: hr.length } : null,
     irregularRhythmAlerts: d.alerts.length ? { count: d.alerts.length, mostRecent: d.alerts[0].toLocaleString() } : 0,
+    bodyBattery: (() => { const b = battery(); return b ? { now: b.now, startedAt: b.start } : null; })(),
+    sicknessSignals: (() => { const c = sickCheck(); return { level: c.level, signals: c.signals.map(x => ({ [x.label]: x.text, flagged: x.on })) }; })(),
+    weekReport: (() => { const w = weekReport(); return { overall: letter(w.overall), grades: w.rows.map(r => ({ [r.k]: letter(r.s), why: r.why })) }; })(),
+    lifts: Object.fromEntries(Object.entries(liftHistory()).map(([ex, h]) => [ex, h.slice(-6).map(x => ({ date: day(x.date), topSet: `${x.top.kg}kg x ${x.top.reps}`, est1RM: Math.round(x.e1), volumeKg: Math.round(x.vol) }))])),
+    physio: { area: store.get("pulse.physioArea") || null, sessions: W.sessions().filter(s => s.sport === "Hydro physio").slice(0, 10).map(s => ({ date: day(new Date(s.start)), minutes: Math.round((s.end - s.start) / 60000), painBefore: s.painBefore ?? null, painAfter: s.painAfter ?? null })) },
     bedtimesLogged: BED.log().slice(0, 14).map(e => { const n = nightFor(e); return { date: day(new Date(e.end)), tappedBed: time(new Date(e.start)), gotUp: time(new Date(e.end)), fellAsleepMinutesAfterTap: asleepAfter(e, n), asleepMin: n ? Math.round(n.asleep) : null }; }),
     sleep: nights,
     metrics,
