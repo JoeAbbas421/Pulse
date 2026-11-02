@@ -145,7 +145,7 @@ label.field input { font: 500 13px var(--mono); color: var(--fg); background: rg
 nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
   padding: 8px max(10px, env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-left, 0px));
   background: rgba(6,3,4,.78); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px); border-top: 1px solid var(--line); }
-nav.tabs .inner { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); }
+nav.tabs .inner { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: repeat(6, 1fr); }
 .tab { appearance: none; background: none; border: 0; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 3px; font: 700 10.5px var(--body); padding: 6px 0; cursor: pointer; }
 .tab svg { width: 22px; height: 22px; }
 .tab[aria-selected="true"] { color: var(--mint); }
@@ -180,10 +180,31 @@ label.field select { font: 500 13px var(--body); color: var(--fg); background: r
   .aurora i, .onboard .heart, .iconbtn.spin svg { animation: none; }
   .sheet { transition: none; }
 }
+.coachcard { border-color: rgba(255,46,69,.38); background: linear-gradient(160deg, rgba(255,46,69,.10), rgba(255,228,232,.035) 55%); }
+.coach-head { margin: 0; font-size: 16.5px; font-weight: 700; line-height: 1.35; }
+.coach-md p { margin: 0 0 8px; }
+.coach-md h3 { font: 700 11px var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--mint); margin: 14px 0 6px; }
+.coach-md h3:first-child { margin-top: 0; }
+.coach-md ul { margin: 0 0 8px; padding-left: 18px; }
+.coach-md li { margin: 0 0 5px; }
+.coach-md li::marker { color: var(--mint); }
+.coach-md > :last-child { margin-bottom: 0; }
+.thinking { animation: breathe 1.6s ease-in-out infinite; }
+.chat { display: flex; flex-direction: column; gap: 10px; }
+.bubble { max-width: 88%; padding: 12px 14px; border-radius: 20px; font-size: 14.5px; overflow-wrap: anywhere; }
+.bubble.me { align-self: flex-end; background: linear-gradient(135deg, #ff3b52, #c20f2b); color: #fff; border-bottom-right-radius: 6px; white-space: pre-wrap; }
+.bubble.ai { align-self: flex-start; background: var(--surface); border: 1px solid var(--line); border-bottom-left-radius: 6px; }
+.quick { display: flex; flex-wrap: wrap; gap: 8px; }
+.qchip { appearance: none; border: 1px solid var(--line); background: var(--surface-strong); color: var(--fg); border-radius: 99px; padding: 9px 13px; font: 600 13px var(--body); text-align: left; cursor: pointer; }
+.askbar { display: flex; gap: 8px; align-items: center; }
+.askbar input, textarea.goals { flex: 1; min-width: 0; font: 500 16px var(--body); color: var(--fg); background: rgba(0,0,0,.5); border: 1px solid var(--line); border-radius: 22px; padding: 12px 16px; }
+textarea.goals { width: 100%; border-radius: 16px; resize: vertical; font-size: 16px; }
+.iconbtn.send { width: 46px; height: 46px; flex: none; background: linear-gradient(135deg, #ff3b52, #c20f2b); border: 0; color: #fff; }
+.iconbtn[disabled], .askbar input[disabled] { opacity: .5; }
+a.btn { text-decoration: none; display: inline-block; }
+@media (prefers-reduced-motion: reduce) { .thinking { animation: none; } }
 </style>
-</head>
-<body>
-
+</head><body>
 
 <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
 <main class="app" id="app"></main>
@@ -541,6 +562,7 @@ function todayScreen() {
       </div>
       <div class="pills">${pill("Sleep score", n ? sleepScore(n) : "—", C.violet)}${pill("HRV", latest("hrv") ? Math.round(latest("hrv").value) + " ms" : "—", C.sky)}${pill("Resting HR", latest("restingHeartRate") ? Math.round(latest("restingHeartRate").value) + " bpm" : "—", C.pink)}</div>
     </div>
+    ${checkupCard(true)}
     ${W.active() ? workoutCard() : ""}
     ${activityRings()}
     ${hr.length > 1 ? `<button class="card tap" data-metric="avgHeartRate" style="text-align:left;color:inherit;font:inherit">${title("Heart rate today", "heart", C.pink, now ? now + " bpm now" : "")}${hrChart(hr)}</button>` : ""}
@@ -682,13 +704,13 @@ function onboarding() {
   animateRings(app);
 }
 
-const TABS = [["today", "Today", "spark"], ["sleep", "Sleep", "moon"], ["heart", "Heart", "heart"], ["activity", "Activity", "run"], ["you", "You", "user"]];
+const TABS = [["today", "Today", "spark"], ["sleep", "Sleep", "moon"], ["heart", "Heart", "heart"], ["activity", "Activity", "run"], ["coach", "Claude", "claude"], ["you", "You", "user"]];
 function render() {
   if (!S.data) return onboarding();
   const nav = document.getElementById("tabs"); nav.hidden = false;
   nav.querySelector(".inner").innerHTML = TABS.map(([id, label, ic]) => `<button class="tab" role="tab" aria-selected="${S.tab === id}" data-tab="${id}">${icon(ic)}${label}</button>`).join("");
   const app = document.getElementById("app");
-  app.innerHTML = ({ today: todayScreen, sleep: sleepScreen, heart: heartScreen, activity: activityScreen, you: youScreen })[S.tab]();
+  app.innerHTML = (({ today: todayScreen, sleep: sleepScreen, heart: heartScreen, activity: activityScreen, coach: coachScreen, you: youScreen })[S.tab] || todayScreen)();
   animateRings(app);
 }
 
@@ -865,6 +887,7 @@ async function sync() {
     if (!S.data) { S.data = null; S.mode = null; }
   } else { S.data = data; S.mode = "live"; }
   render();
+  coachAuto();
 }
 
 /* ---------- workout sessions: you start and stop, Pulse pulls what your Air recorded in between ---------- */
@@ -1100,6 +1123,7 @@ async function openSession(id, refresh = false) {
       <p class="note">Heart data covers ${Math.round(r.coverage * 100)}% of this session${r.coverage < .9 ? ", so some numbers may be low. Wear the Air snug during workouts" : ""}.</p>
       <p class="note">Calories: ${r.kcal ? r.kcal.how : "add your age, weight and sex in the You tab for an estimate"}. Zones and load use max heart rate ${r.profile.max} bpm${r.profile.ageSet ? "" : " (set your age in the You tab to make this exact)"} and resting heart rate ${Math.round(r.profile.rest)} bpm.</p>
     </div></div>
+    <button class="btn primary" data-c="debrief" data-id="${id}">${icon("claude")} Ask Claude about this session</button>
     <div class="btnrow"><button class="btn ghost" data-w="refresh" data-id="${id}">Refresh</button><button class="btn ghost" data-w="delete" data-id="${id}">${icon("trash")} Delete</button></div>
   </div>`);
   animateRings(document.getElementById("sheetBody"));
@@ -1147,6 +1171,273 @@ if (!canUseGoogle() && !W.sessions().length) {
   W.save([{ id: String(start), sport: "Football", start, end }]);
 }
 
+/* ---------- Claude coach: reads a summary of your data, gives a daily checkup and answers questions ---------- */
+/* Three ways to reach Claude, best first:
+   1. Your own Anthropic API key (on Pulse's own web address): calls Claude straight from this phone.
+   2. Inside the claude.ai preview: the page asks Claude through claude.ai itself, no key needed.
+   3. Neither: Pulse copies your summary and opens the Claude app so you can paste it. */
+const COACH_MODEL = "claude-opus-5-5";
+const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.135.0/+esm";
+Object.assign(P, { claude: '<path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/>', send: '<path d="M4 12 20 4l-6 16-3-7z"/>' });
+
+const localDay = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const CO = {
+  key: () => store.get("pulse.anthropicKey") || "",
+  goals: () => store.get("pulse.goals") || "",
+  checkup() { try { const c = JSON.parse(store.get("pulse.checkup")); return c && c.day === localDay() && c.mode === S.mode ? c : null; } catch { return null; } },
+  chat() { try { return JSON.parse(store.get("pulse.chat")) || []; } catch { return []; } },
+  saveChat: msgs => store.set("pulse.chat", JSON.stringify(msgs.slice(-24))),
+  busy: null,       // "checkup" | "chat" | null
+  live: "",         // text streaming in right now
+  error: null,
+  sample: undefined, // claude.ai preview channel, resolved lazily
+};
+
+async function sampleChannel() {
+  if (CO.sample !== undefined) return CO.sample;
+  try { CO.sample = window.claude?.use ? await window.claude.use("sample") : null; } catch { CO.sample = null; }
+  return CO.sample;
+}
+function coachBackend() {
+  if (canUseGoogle() && CO.key()) return "api";
+  if (CO.sample) return "sample";
+  return "handoff";
+}
+
+/* What Claude sees: rounded numbers only, nothing guessed. Missing data stays missing. */
+function healthSummary() {
+  const d = S.data, r1 = v => v == null ? null : Math.round(v * 10) / 10;
+  const day = x => localDay(x);
+  const metrics = {};
+  for (const m of METRICS) {
+    const pts = series(m.id); if (!pts.length) continue;
+    const vals = pts.map(p => p.value), last = pts[pts.length - 1];
+    metrics[m.id] = {
+      name: m.title, unit: m.unit,
+      latest: { date: day(last.date), value: r1(last.value), ...(m.total && isToday(last.date) ? { partialDay: true } : {}) },
+      avg14: r1(avg(m.total ? vals.slice(0, -1) : vals)), min14: r1(Math.min(...vals)), max14: r1(Math.max(...vals)),
+      daily: pts.map(p => [day(p.date), r1(p.value)]),
+    };
+  }
+  const nights = mainNights().slice(-14).map(n => ({
+    date: day(n.end), bedtime: time(n.start), wake: time(n.end), asleepMin: Math.round(n.asleep), inBedMin: Math.round(n.inBed),
+    awakeMin: Math.round(n.awake), deepMin: Math.round(n.minutes(["deep"])), remMin: Math.round(n.minutes(["rem"])),
+    lightMin: Math.round(n.minutes(["light"])), hasStages: n.stages.length > 0, pulseSleepScore: sleepScore(n),
+  }));
+  const hr = d.heart.map(p => p.bpm);
+  const sessions = W.sessions().slice(0, 10).map(s => {
+    const r = s.result?.status === "ready" ? s.result : null;
+    return { id: s.id, sport: s.sport, date: day(new Date(s.start)), start: time(new Date(s.start)), minutes: Math.round((s.end - s.start) / 60000),
+      ...(r ? { avgHR: Math.round(r.avg), maxHR: Math.round(r.max), pctOfMaxHR: Math.round(r.max / r.profile.max * 100), load: r.load, loadLabel: loadLabel(r.load),
+        zoneMinutes: Object.fromEntries(Object.entries(r.zones).map(([k, v]) => [k, Math.round(v)])), hrDrop1min: r.recovery1, hrDrop2min: r.recovery2,
+        kcal: r.kcal ? Math.round(r.kcal.v) : null, heartDataCoverage: Math.round(r.coverage * 100) + "%" } : { results: "not synced yet" }) };
+  });
+  const p = W.profile();
+  return {
+    dataSource: S.mode === "live" ? "Fitbit Air via Google Health" : "DEMO DATA (made up, for trying the app)",
+    now: new Date().toLocaleString([], { weekday: "long", year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
+    profile: { age: p.age || null, weightKg: p.weight || null, sex: p.sex || null },
+    goals: CO.goals() || null,
+    pulseCharge: charge(),
+    heartRateToday: hr.length ? { latest: Math.round(hr[hr.length - 1]), low: Math.round(Math.min(...hr)), high: Math.round(Math.max(...hr)), readings: hr.length } : null,
+    irregularRhythmAlerts: d.alerts.length ? { count: d.alerts.length, mostRecent: d.alerts[0].toLocaleString() } : 0,
+    sleep: nights,
+    metrics,
+    workoutsLoggedByAir: d.workouts.slice(0, 12).map(w => ({ type: w.type, date: day(w.start), minutes: Math.round(w.active ?? (w.end - w.start) / 60000),
+      avgHR: w.hr != null ? Math.round(w.hr) : null, kcal: w.calories != null ? Math.round(w.calories) : null, km: w.km != null ? r1(w.km) : null })),
+    pulseWorkoutSessions: sessions,
+  };
+}
+
+const COACH_SYSTEM = `You are Claude, built into Pulse, a personal health app that reads one person's Fitbit Air data. You are their health coach. They play padel and football, lift weights and do hydro physiotherapy, and they want honest, accurate guidance that helps them get healthier and perform better.
+
+How to work:
+- Use only the numbers in the data below. Never invent a reading. If something they ask about isn't in the data, say so in one line.
+- Judge each number against their own 14-day baseline first, then against general norms. Name the actual numbers ("HRV 41 ms vs your 48 average").
+- Fitbit Air has no ECG, GPS or stress sensor. Pulse Charge and the sleep score are Pulse's own estimates. Totals for today are partial until the day ends.
+- Training advice is concrete: what to do today, how hard (easy, moderate, hard, or a heart-rate range), and for how long.
+- You are not a doctor and don't diagnose. If you see irregular-rhythm alerts, average SpO2 under 92%, resting heart rate 8+ bpm above baseline for 3+ days, or skin temperature 1 °C+ above baseline, say calmly that it's worth checking with a doctor, and why.
+- If the data source says DEMO DATA, mention once, briefly, that these are sample numbers.
+- Write like a good coach texting: warm, direct, short sentences, no filler. Use **bold** only for the key number or action. Use "- " for bullets and "## " for section headings. No tables.`;
+
+const CHECKUP_ASK = `Give me today's checkup. Format:
+First line: one punchy sentence on how my body is doing today (no heading).
+## How you're doing
+2 to 4 sentences covering recovery (sleep, HRV, resting HR, Charge) and activity, with the key numbers vs my baseline.
+## Today's plan
+3 bullets: training (what and how hard), recovery or sleep, and one small habit toward my goals.
+## Watch
+Only if something genuinely needs attention: 1 or 2 bullets. Otherwise leave this section out.
+Keep it under 220 words.`;
+
+function coachContext() { return `${COACH_SYSTEM}\n\nTheir data right now (JSON):\n${JSON.stringify(healthSummary())}`; }
+
+/* One call to Claude. onText gets the whole answer so far. */
+async function askClaude(messages, onText) {
+  const be = coachBackend();
+  if (be === "api") {
+    const { default: Anthropic } = await import(SDK_URL);
+    const client = new Anthropic({ apiKey: CO.key(), dangerouslyAllowBrowser: true });
+    const stream = client.beta.messages.stream({
+      model: COACH_MODEL, max_tokens: 16000,
+      thinking: { type: "adaptive" }, output_config: { effort: "medium" },
+      betas: ["server-side-fallback-2026-07-01"], fallbacks: "default", // if a safety check declines, the API retries on another model
+      system: coachContext(), messages,
+    });
+    stream.on("text", (_, snapshot) => onText(snapshot));
+    let msg;
+    try { msg = await stream.finalMessage(); }
+    catch (e) {
+      const st = e?.status;
+      throw new Error(st === 401 ? "Claude didn't accept that API key. Check it in the Claude coach settings below."
+        : st === 429 ? "Too many requests right now. Try again in a minute."
+        : st === 529 || st >= 500 ? "Claude is busy right now. Try again in a minute."
+        : /credit balance/i.test(e?.message || "") ? "Your Anthropic account is out of credit. Add some at console.anthropic.com → Billing."
+        : e?.message || "Couldn't reach Claude.");
+    }
+    if (msg.stop_reason === "refusal") throw new Error("Claude couldn't answer that one. Try asking another way.");
+    return msg.content.filter(b => b.type === "text").map(b => b.text).join("");
+  }
+  if (be === "sample") {
+    const input = messages.map((m, i) => ({ role: m.role, content: i === 0 ? `${coachContext()}\n\n---\n\n${m.content}` : m.content }));
+    try { return (await CO.sample(input, { onText: ({ text }) => onText(text), cache: false })).text; }
+    catch (e) {
+      if (e?.code === "not_granted") { CO.sample = null; throw new Error("Claude wasn't allowed in this preview. Allow it from the page's permissions, or add an API key on Pulse's own web address."); }
+      throw new Error(e?.code === "rate_limited" ? "Too many requests right now. Try again in a minute." : e?.message || "Couldn't reach Claude.");
+    }
+  }
+  throw new Error("handoff");
+}
+
+/* Tiny, safe Markdown: headings, bullets, bold. */
+function md(text) {
+  const out = []; let list = false;
+  for (const raw of String(text).split("\n")) {
+    const line = esc(raw.trim()).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+    if (/^[-•*] /.test(raw.trim())) { if (!list) { out.push("<ul>"); list = true; } out.push(`<li>${line.slice(2)}</li>`); continue; }
+    if (list) { out.push("</ul>"); list = false; }
+    if (!line) continue;
+    out.push(/^#{1,3} /.test(raw.trim()) ? `<h3>${line.replace(/^#{1,3} /, "")}</h3>` : `<p>${line}</p>`);
+  }
+  if (list) out.push("</ul>");
+  return out.join("");
+}
+
+function paintLive() {
+  const el = document.querySelector("[data-live]"); if (!el) return;
+  el.innerHTML = CO.live ? md(CO.live) : `<p class="note thinking">Claude is reading your data…</p>`;
+}
+
+async function runCheckup() {
+  if (CO.busy || !S.data) return;
+  await sampleChannel();
+  if (coachBackend() === "handoff") return handoff(CHECKUP_ASK);
+  CO.busy = "checkup"; CO.live = ""; CO.error = null; render();
+  try {
+    const text = await askClaude([{ role: "user", content: CHECKUP_ASK }], t => { CO.live = t; paintLive(); });
+    store.set("pulse.checkup", JSON.stringify({ day: localDay(), text, at: Date.now(), mode: S.mode }));
+  } catch (e) { CO.error = e.message; }
+  CO.busy = null; CO.live = ""; render();
+}
+
+async function sendChat(q) {
+  q = String(q || "").trim();
+  if (!q || CO.busy || !S.data) return;
+  await sampleChannel();
+  if (coachBackend() === "handoff") return handoff(q);
+  const msgs = [...CO.chat(), { role: "user", content: q }];
+  CO.saveChat(msgs); CO.busy = "chat"; CO.live = ""; CO.error = null;
+  if (S.tab !== "coach") { S.tab = "coach"; store.set("pulse.tab", "coach"); }
+  render(); scrollChat();
+  try {
+    const text = await askClaude(msgs.slice(-12), t => { CO.live = t; paintLive(); scrollChat(); });
+    CO.saveChat([...msgs, { role: "assistant", content: text }]);
+  } catch (e) { CO.error = e.message; CO.saveChat(msgs.slice(0, -1)); }
+  CO.busy = null; CO.live = ""; render(); scrollChat();
+}
+const scrollChat = () => { const el = document.getElementById("chatEnd"); if (el) el.scrollIntoView({ block: "end", behavior: "smooth" }); };
+
+/* No key and not in the preview: hand the summary to the Claude app. */
+async function handoff(ask) {
+  const prompt = `${COACH_SYSTEM}\n\nMy data right now (JSON):\n${JSON.stringify(healthSummary())}\n\n${ask}`;
+  let copied = false;
+  try { await navigator.clipboard.writeText(prompt); copied = true; } catch {}
+  const url = "https://claude.ai/new" + (prompt.length < 6000 ? "?q=" + encodeURIComponent(prompt) : "");
+  CO.error = copied ? (prompt.length < 6000 ? null : "Your data is copied. Paste it into the new Claude chat that just opened.") : "Couldn't copy automatically. Add an API key below to chat with Claude right here.";
+  window.open(url, "_blank", "noopener");
+  render();
+}
+
+/* Auto checkup: the first time you open Pulse each day with a key set, after your data syncs. */
+function coachAuto() {
+  if (S.mode === "live" && CO.key() && canUseGoogle() && !CO.checkup() && !CO.busy && S.data) runCheckup();
+}
+
+function checkupCard(compact) {
+  const c = CO.checkup(), be = coachBackend();
+  const headLine = c ? c.text.split("\n").find(l => l.trim()) || "" : "";
+  if (compact) {
+    if (CO.busy === "checkup") return `<button class="card tap coachcard" data-c="go" style="text-align:left;color:inherit;font:inherit">${title("Claude's checkup", "claude", C.mint, "reading…")}<p class="note thinking">Claude is reading last night and today…</p></button>`;
+    return `<button class="card tap coachcard" data-c="${c ? "go" : "checkup"}" style="text-align:left;color:inherit;font:inherit">
+      ${title("Claude's checkup", "claude", C.mint, c ? time(new Date(c.at)) : "")}
+      ${c ? `<p class="coach-head">${md(headLine).replace(/<\/?(p|h3)>/g, "")}</p><p class="note" style="margin-top:6px">Tap for today's plan →</p>`
+          : `<p style="margin:0">Get today's read on your recovery and a plan for the day.</p><p class="note" style="margin-top:6px">${be === "handoff" ? "Opens Claude with your data →" : "Tap to ask Claude →"}</p>`}
+    </button>`;
+  }
+  let body;
+  if (CO.busy === "checkup") body = `<div class="coach-md" data-live>${CO.live ? md(CO.live) : `<p class="note thinking">Claude is reading your data…</p>`}</div>`;
+  else if (c) body = `<div class="coach-md">${md(c.text)}</div><div class="btnrow" style="margin-top:12px"><button class="btn ghost" data-c="checkup">${icon("sync")} Run again</button></div>`;
+  else body = `<p style="margin:0 0 12px">Claude reads your sleep, heart, activity and workouts against your own baseline and tells you how you're doing and what to do today.</p>
+    <button class="btn primary" data-c="checkup" style="width:100%">${be === "handoff" ? "Open in Claude with my data" : "Get today's checkup"}</button>`;
+  return `<div class="card coachcard">${title("Today's checkup", "claude", C.mint, c ? `${time(new Date(c.at))}` : dateLine().split(",")[0])}${body}</div>`;
+}
+
+const QUICK = ["How should I train today?", "Am I recovering well this week?", "How can I sleep better?", "Plan my next 7 days of padel, football and lifting"];
+function coachScreen() {
+  const be = coachBackend(), msgs = CO.chat(), keyed = !!CO.key();
+  return header("Claude", "Your coach") + `<div class="stack">
+    ${CO.error ? `<div class="card warn">${esc(CO.error)}</div>` : ""}
+    ${checkupCard(false)}
+    <h2>Ask Claude</h2>
+    <div class="chat">
+      ${msgs.map(m => m.role === "user" ? `<div class="bubble me">${esc(m.content)}</div>` : `<div class="bubble ai coach-md">${md(m.content)}</div>`).join("")}
+      ${CO.busy === "chat" ? `<div class="bubble ai coach-md" data-live>${CO.live ? md(CO.live) : `<p class="note thinking">Thinking…</p>`}</div>` : ""}
+      ${!msgs.length && CO.busy !== "chat" ? `<div class="quick">${QUICK.map(q => `<button class="qchip" data-c="ask" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>` : ""}
+      <div id="chatEnd"></div>
+    </div>
+    <form class="askbar" id="askForm"><input id="coachQ" placeholder="Ask about your sleep, heart, training…" autocomplete="off" ${CO.busy ? "disabled" : ""}><button class="iconbtn send" aria-label="Send" ${CO.busy ? "disabled" : ""}>${icon("send")}</button></form>
+    ${msgs.length ? `<button class="btn ghost" data-c="clear" style="align-self:center">New conversation</button>` : ""}
+    <div class="card">${title("Your goals", "spark", C.amber)}
+      <p class="note" style="margin-bottom:10px">Claude shapes every checkup and answer around these.</p>
+      <textarea id="coachGoals" class="goals" rows="3" placeholder="e.g. Drop 4 kg by March, sleep 7.5 h, more power in padel, finish hydro physio for my knee">${esc(CO.goals())}</textarea></div>
+    ${canUseGoogle() ? `<div class="card">${title("Connect Claude", "link", C.sky, keyed ? "connected" : "")}
+      <p class="note" style="margin-bottom:12px">${keyed ? "Claude runs right here in Pulse with your own key." : "Add your Anthropic API key to get your checkup automatically every morning and chat with Claude inside Pulse. Without it, Pulse opens the Claude app with your data instead."}</p>
+      <label class="field" for="anthKey">Anthropic API key<input id="anthKey" type="password" value="${esc(CO.key())}" placeholder="sk-ant-…" autocomplete="off" spellcheck="false"></label>
+      <div class="btnrow" style="margin-top:10px"><button class="btn primary" data-c="savekey">Save key</button>${keyed ? `<button class="btn ghost" data-c="dropkey">Remove</button>` : `<a class="btn ghost" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Get a key</a>`}</div></div>`
+    : be === "sample" ? `<p class="note">In this preview Claude coaches you on the demo data through claude.ai. On Pulse's own web address it reads your real Fitbit Air data.</p>` : ""}
+    <p class="foot">Claude sees a summary of your numbers (no name, no Google account) ${be === "api" ? "sent from this phone straight to Anthropic" : be === "sample" ? "through claude.ai" : "only when you open it in the Claude app"}. Claude is a coach, not a doctor.</p>
+  </div>`;
+}
+
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-c]"); if (!t) return;
+  const a = t.dataset.c;
+  if (a === "go") { S.tab = "coach"; store.set("pulse.tab", "coach"); render(); scrollTo(0, 0); }
+  else if (a === "checkup") { if (S.tab !== "coach" && coachBackend() !== "handoff") { S.tab = "coach"; store.set("pulse.tab", "coach"); scrollTo(0, 0); } runCheckup(); }
+  else if (a === "ask") sendChat(t.dataset.q);
+  else if (a === "clear") { CO.saveChat([]); CO.error = null; render(); }
+  else if (a === "savekey") { const k = document.getElementById("anthKey").value.trim(); store.set("pulse.anthropicKey", k || null); CO.error = null; render(); if (k) coachAuto(); }
+  else if (a === "dropkey") { store.set("pulse.anthropicKey", null); render(); }
+  else if (a === "debrief") {
+    const s = W.sessions().find(x => x.id === t.dataset.id); if (!s) return;
+    closeSheet();
+    sendChat(`Debrief my ${s.sport} session from ${new Date(s.start).toLocaleString([], { weekday: "long", hour: "numeric", minute: "2-digit" })}: how did my body handle it, what does my recovery say, and what should I do before the next one?`);
+  }
+});
+document.addEventListener("submit", e => { if (e.target.id !== "askForm") return; e.preventDefault(); const q = document.getElementById("coachQ").value; sendChat(q); });
+document.addEventListener("change", e => { if (e.target.id === "coachGoals") store.set("pulse.goals", e.target.value.trim() || null); });
+sampleChannel().then(ch => { if (ch && S.data) render(); });
+
 /* ---------- boot ---------- */
 S.tab = store.get("pulse.tab") || "today";
 if (canUseGoogle()) readRedirect();
@@ -1156,5 +1447,4 @@ else { S.mode = "demo"; S.data = demo(); render(); }
 })();
 </script>
 
-</body>
-</html>
+</body></html>
