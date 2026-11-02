@@ -449,7 +449,7 @@ function charge() {
   if (!parts.length) return null;
   return Math.round(parts.reduce((a, [s, w]) => a + s * w, 0) / parts.reduce((a, [, w]) => a + w, 0));
 }
-const chargeLabel = s => s >= 85 ? "Fully charged. Go hard today." : s >= 70 ? "Good to go. A solid training day." : s >= 50 ? "Moderate. Keep it steady." : "Running low. Prioritize recovery.";
+const chargeLabel = s => s >= 80 ? "Recovered. Go hard today." : s >= 60 ? "Mostly recovered. A solid training day." : s >= 40 ? "Still recovering. Keep it light." : "Not recovered. Rest today.";
 
 /* ---------- drawing ---------- */
 let uid = 0;
@@ -606,12 +606,12 @@ function todayScreen() {
   const ch = charge(), n = lastNight(), d = S.data;
   const hr = d.heart, now = hr.length ? Math.round(hr[hr.length - 1].bpm) : null;
   return header(dateLine(), greeting()) + `<div class="stack">
-    <div class="card">
+    <div class="card${ch != null ? " tap" : ""}" ${ch != null ? 'data-rec="open" role="button" tabindex="0"' : ""}>
       <div class="hero">
         <div class="ringwrap" style="width:148px;height:148px">${ring((ch || 0) / 100, [C.mint, C.sky, C.violet], 148, 16)}
-          <div class="center"><div><div class="big" style="font-size:44px">${ch ?? "—"}</div><div class="sub">CHARGE</div></div></div></div>
-        <div class="hero-copy"><strong>${ch != null ? chargeLabel(ch) : "Wear your Air tonight to get your first Charge score."}</strong>
-          <p>Pulse's own estimate, from last night's sleep, your HRV and resting heart rate compared with your own 14-day baseline.</p></div>
+          <div class="center"><div><div class="big" style="font-size:44px">${ch ?? "—"}</div><div class="sub">RECOVERY</div></div></div></div>
+        <div class="hero-copy"><strong>${ch != null ? chargeLabel(ch) : "Wear your Air tonight to get your first recovery score."}</strong>
+          <p>From your HRV, resting heart rate, sleep, sleep debt, training strain and illness signs, each vs your own normal. Tap for details.</p></div>
       </div>
       <div class="pills">${pill("Sleep score", n ? sleepScore(n) : "—", C.violet)}${pill("HRV", latest("hrv") ? Math.round(latest("hrv").value) + " ms" : "—", C.sky)}${pill("Resting HR", latest("restingHeartRate") ? Math.round(latest("restingHeartRate").value) + " bpm" : "—", C.pink)}</div>
     </div>
@@ -691,7 +691,7 @@ const CAPS = [
   ["bolt", "Active Zone Minutes", "Fat-burn, cardio and peak heart-rate zones"],
   ["gauge", "Cardio fitness (VO₂ max)", "Estimated aerobic fitness"],
   ["run", "Workouts", "Exercise sessions with time, heart rate and calories"],
-  ["spark", "Charge score", "Pulse's own readiness score from your sleep, HRV and resting HR"],
+  ["spark", "Recovery score", "Pulse's own score from HRV, resting HR, sleep, sleep debt, training strain and illness signs"],
 ];
 function youScreen() {
   const canConnect = canUseGoogle();
@@ -1364,7 +1364,7 @@ function liftAdvice(ex, hist) {
   const last = h[h.length - 1], prev = h[h.length - 2], step = LOWER.includes(ex) ? 5 : 2.5;
   const topKg = Math.max(...last.sets.map(s => s.kg)), atTop = last.sets.filter(s => s.kg === topKg);
   const ch = charge();
-  if (ch != null && ch < 50) return { tone: "amber", text: `Charge is ${ch} today. Stay at ${topKg} kg or less and stop 2 reps short of failure.` };
+  if (ch != null && ch < 50) return { tone: "amber", text: `Recovery is ${ch}% today. Stay at ${topKg} kg or less and stop 2 reps short of failure.` };
   if (prev) {
     const pTop = Math.max(...prev.sets.map(s => s.kg));
     const pReps = Math.max(...prev.sets.filter(s => s.kg === pTop).map(s => s.reps)), lReps = Math.max(...atTop.map(s => s.reps));
@@ -1464,7 +1464,7 @@ function batteryCard() {
     <div class="battery"><div class="batt"><div class="fill" style="width:${b.now}%;background:${col}"></div></div><b style="color:${col}">${b.now}</b></div>
     <p style="margin:8px 0 0;font-weight:700">${batteryLabel(b.now)}</p>
     <svg class="chart" viewBox="0 0 ${Wd} ${H}" style="margin-top:8px" aria-hidden="true"><path d="${line}" fill="none" stroke="${col}" stroke-width="2"/></svg>
-    <p class="note">Pulse's estimate. It starts each morning at your Charge, drains slowly while you're awake and faster in your heart-rate zones.${(() => { const c = heartCoverage(b.wake); return c == null ? "" : c >= .8 ? ` Based on ${Math.round(c * 100)}% of today's heart data.` : ` <span style="color:${C.amber}">Only ${Math.round(c * 100)}% of today's heart data so far, so treat this as rough.</span>`; })()}</p></div>`;
+    <p class="note">Pulse's estimate. It starts each morning at your recovery score, drains slowly while you're awake and faster in your heart-rate zones.${(() => { const c = heartCoverage(b.wake); return c == null ? "" : c >= .8 ? ` Based on ${Math.round(c * 100)}% of today's heart data.` : ` <span style="color:${C.amber}">Only ${Math.round(c * 100)}% of today's heart data so far, so treat this as rough.</span>`; })()}</p></div>`;
 }
 
 /* --- sick early warning --- */
@@ -1749,6 +1749,128 @@ if (!canUseGoogle() && !store.get("pulse.demoClimb")) {
   store.set("pulse.demoClimb", "1");
 }
 
+/* ---------- recovery: one score from HRV, resting HR, sleep, sleep debt, training strain and illness signs, each vs your own baseline ---------- */
+const SLEEP_NEED = 480; // minutes; adjusted to his own average if he regularly sleeps well
+const valOn = (id, t0) => { const p = fullSeries(id).find(p => p.date >= t0 && p.date < t0 + DAY); return p ? p.value : null; };
+const before = (id, t0, n = 30) => fullSeries(id).filter(p => p.date < t0).slice(-n).map(p => p.value);
+const sd = v => { if (v.length < 3) return null; const m = avg(v); return Math.sqrt(avg(v.map(x => (x - m) ** 2))); };
+function nightFor0(t0) { return mainNights().filter(n => n.end >= t0 - 6 * 3600000 && n.end < t0 + 16 * 3600000).slice(-1)[0] || null; }
+function sessionLoad(s) { return s.result?.status === "ready" ? s.result.load : (INTENSITY[s.sport] || .6) * (s.end - s.start) / 60000 * 1.5; }
+function dayStrain(t0) { // zone minutes from the Air, weighted like training load, plus Pulse sessions not already in them
+  const zm = valOn("zoneMinutes", t0) || 0;
+  const ses = W.sessions().filter(s => s.end >= t0 && s.end < t0 + DAY);
+  const fromSessions = ses.reduce((a, s) => a + sessionLoad(s), 0);
+  return Math.max(zm * 1.8, fromSessions);
+}
+
+/* Recovery for the morning of day t0 (midnight). Uses only data you had by then. */
+function recoveryAt(t0) {
+  const parts = [];
+  const add = (key, label, score, weight, detail) => parts.push({ key, label, score: Math.round(clamp(score)), weight, detail });
+  // 1. HRV: log-scaled, compared with your normal spread (z-score), so a small dip on a steady baseline counts more than on a noisy one
+  const hv = valOn("hrv", t0), hb = before("hrv", t0).filter(v => v > 0);
+  if (hv && hb.length >= 5) {
+    const lb = hb.map(Math.log), z = (Math.log(hv) - avg(lb)) / Math.max(sd(lb), .05);
+    add("hrv", "HRV", 70 + z * 18, .3, `${Math.round(hv)} ms vs your normal ${Math.round(median(hb))} ms`);
+  }
+  // 2. Resting heart rate: higher than normal means your body is still working
+  const rv = valOn("restingHeartRate", t0), rb = before("restingHeartRate", t0);
+  if (rv && rb.length >= 5) {
+    const z = (rv - avg(rb)) / Math.max(sd(rb), 1);
+    add("rhr", "Resting heart rate", 70 - z * 18, .2, `${Math.round(rv)} bpm vs your normal ${Math.round(median(rb))} bpm`);
+  }
+  // 3. Last night's sleep
+  const n = nightFor0(t0);
+  if (n) add("sleep", "Last night's sleep", sleepScore(n), .25, `${fmtDur(n.asleep)} asleep, score ${sleepScore(n)}`);
+  // 4. Sleep debt over the last 3 nights
+  const nights = [0, 1, 2].map(i => nightFor0(t0 - i * DAY)).filter(Boolean);
+  if (nights.length >= 2) {
+    const debt = nights.reduce((a, x) => a + Math.max(0, SLEEP_NEED - x.asleep), 0) * 3 / nights.length;
+    add("debt", "Sleep debt (3 nights)", 100 - debt / 60 * 14, .1, debt < 30 ? "None worth noting" : `${fmtDur(debt)} short of 8 h a night, over 3 nights`);
+  }
+  // 5. Training strain: the last 2 days compared with what you usually do (acute vs chronic load)
+  const has = d => valOn("zoneMinutes", d) != null || W.sessions().some(s => s.end >= d && s.end < d + DAY);
+  const days = Array.from({ length: 28 }, (_, i) => t0 - (i + 1) * DAY).filter(has).map(dayStrain);
+  if (days.length >= 5) {
+    const acute = dayStrain(t0 - DAY) + dayStrain(t0 - 2 * DAY) * .5, chronic = Math.max(median(days) * 1.5, 25), ratio = acute / chronic;
+    add("strain", "Training strain", 100 - Math.max(0, ratio - .8) * 55, .15, `Last 2 days ${Math.round(acute)} vs your usual ${Math.round(chronic)} (${ratio.toFixed(1)}×)`);
+  }
+  // 6. Illness signs: skin temperature and breathing above your normal pull recovery down hard
+  const st = valOn("skinTemp", t0), br = valOn("breathingRate", t0), bb = median(before("breathingRate", t0));
+  const flags = [st != null && st >= .5 ? `skin temp +${st.toFixed(1)} °C` : "", br != null && bb && br - bb >= 1.5 ? `breathing +${(br - bb).toFixed(1)}/min` : ""].filter(Boolean);
+  if (st != null || br != null) add("ill", "Illness signs", flags.length ? 25 : 100, flags.length ? .25 : .05, flags.length ? flags.join(", ") : "Skin temp and breathing normal");
+  if (parts.length < 2) return null;
+  const w = parts.reduce((a, p) => a + p.weight, 0);
+  const score = Math.round(parts.reduce((a, p) => a + p.score * p.weight, 0) / w);
+  return { score, parts, have: parts.length, of: 6 };
+}
+
+function recovery() {
+  if (!S.data) return null;
+  const t0 = startOfDay(new Date()).getTime(), r = recoveryAt(t0); if (!r) return null;
+  // Only count it as today's if last night or today's HRV/RHR is actually in
+  const n = lastNight(), freshData = (n && Date.now() - n.end < 20 * 3600000) || fresh(latest("hrv")) || fresh(latest("restingHeartRate"));
+  if (!freshData) return null;
+  const trend = Array.from({ length: 14 }, (_, i) => { const d = t0 - (13 - i) * DAY, x = recoveryAt(d); return { d, v: x ? x.score : null }; });
+  const prev = trend.slice(0, -1).map(p => p.v).filter(v => v != null);
+  const mr = muscleReadiness(), sports = ["Padel", "Football", "Weightlifting", "Rock climbing"].map(sp => {
+    const ms = sp === "Weightlifting" ? ["Chest", "Quads", "Upper back", "Lats", "Shoulders"] : SPORT_FOCUS[sp].primary;
+    const low = ms.filter(m => mr[m] && mr[m].pct < .7).map(m => ({ m, pct: mr[m].pct, left: mr[m].left }));
+    return { sp, low, ok: !low.length };
+  });
+  const musclesLeft = Math.max(0, ...Object.values(mr).map(x => x.left));
+  return { ...r, trend, avg7: prev.length ? Math.round(avg(prev.slice(-7))) : null, sports, musclesLeft,
+    hoursToFull: r.score >= 85 ? 0 : Math.round((85 - r.score) / 22 * 24) };
+}
+const recoveryZone = s => s >= 80 ? { label: "Recovered", col: C.mint, plan: "Go hard. Intervals, a full match or heavy lifts are fine today.", load: "Training load up to about 150", hr: "Peak zone is fine" }
+  : s >= 60 ? { label: "Mostly recovered", col: C.sky, plan: "Train normally but skip your hardest efforts.", load: "Training load about 60 to 110", hr: "Mostly cardio zone, short peaks only" }
+  : s >= 40 ? { label: "Still recovering", col: C.amber, plan: "Keep it light: technique, easy cardio or mobility.", load: "Training load under 50", hr: "Stay in fat-burn zone" }
+  : { label: "Not recovered", col: "#ff1033", plan: "Rest today. Hydro physio, a walk or stretching at most.", load: "Training load under 20", hr: "Stay out of the zones" };
+
+function recoveryCard() {
+  const r = recovery(); if (!r) return "";
+  const z = recoveryZone(r.score), top = [...r.parts].sort((a, b) => a.score - b.score)[0];
+  return `<button class="card tap" data-rec="open" style="text-align:left;color:inherit;font:inherit;width:100%">${title("Recovery", "heart", z.col, "details →")}
+    <div style="display:flex;align-items:baseline;gap:10px"><b style="font:800 40px var(--display, var(--body));color:${z.col}">${r.score}%</b><strong>${z.label}</strong></div>
+    <p style="margin:6px 0 0">${z.plan}</p>
+    ${top.score < 60 ? `<p class="note" style="margin-top:6px">Holding you back most: ${top.label.toLowerCase()} (${top.detail}).</p>` : ""}</button>`;
+}
+function recoverySheet() {
+  const r = recovery(); if (!r) return;
+  const z = recoveryZone(r.score);
+  const Wd = 340, H = 110, pts = r.trend.map((p, i) => p.v == null ? null : [8 + i * (Wd - 16) / 13, 8 + (H - 26) * (1 - p.v / 100)]);
+  const good = pts.filter(Boolean);
+  const chart = good.length >= 2 ? `<svg class="chart" viewBox="0 0 ${Wd} ${H}" aria-label="Recovery over the last 14 days">
+      ${[80, 60, 40].map(v => `<line x1="0" x2="${Wd}" y1="${8 + (H - 26) * (1 - v / 100)}" y2="${8 + (H - 26) * (1 - v / 100)}" stroke="rgba(255,255,255,.08)" stroke-dasharray="3 4"/>`).join("")}
+      <path d="${smooth(good)}" fill="none" stroke="${C.mint}" stroke-width="2.4"/>
+      ${pts.map((p, i) => p ? `<circle cx="${p[0]}" cy="${p[1]}" r="${i === 13 ? 5 : 3}" fill="${recoveryZone(r.trend[i].v).col}"/>` : "").join("")}
+      ${[0, 7, 13].map(i => `<text x="${8 + i * (Wd - 16) / 13}" y="${H - 4}" fill="var(--muted)" font-size="10" text-anchor="${i === 0 ? "start" : i === 13 ? "end" : "middle"}">${i === 13 ? "Today" : new Date(r.trend[i].d).toLocaleDateString([], { month: "short", day: "numeric" })}</text>`).join("")}</svg>` : "";
+  const parts = r.parts.map(p => `<div style="margin:10px 0"><div style="display:flex;justify-content:space-between;gap:10px"><b style="font-size:14px">${p.label}</b><span style="font:700 14px var(--mono);color:${recoveryZone(p.score).col}">${p.score}</span></div>
+      <div style="height:6px;border-radius:9px;background:rgba(255,255,255,.08);margin:6px 0 4px;overflow:hidden"><div style="height:100%;width:${p.score}%;background:${recoveryZone(p.score).col};border-radius:9px"></div></div><span class="note" style="font-size:12px">${p.detail} · counts ${Math.round(p.weight / r.parts.reduce((a, x) => a + x.weight, 0) * 100)}%</span></div>`).join("");
+  const full = Math.max(r.hoursToFull, Math.round(r.musclesLeft));
+  openSheet(`<div class="stack" style="margin-top:10px">
+    <div><div class="eyebrow">Recovery · today</div><h1>${r.score}% ${z.label.toLowerCase()}</h1></div>
+    <div class="card hero"><div class="ringwrap" style="width:124px;height:124px">${ring(r.score / 100, [z.col, C.violet], 124, 14)}<div class="center"><div><div class="big" style="font-size:34px">${r.score}</div><div class="sub">RECOVERY</div></div></div></div>
+      <div class="hero-copy"><strong>${z.plan}</strong><p>${r.avg7 != null ? `Your 7-day average is ${r.avg7}%. ` : ""}${r.hoursToFull ? `Fully recovered in about ${full} h.` : r.musclesLeft > 1 ? `Your body is recovered. Muscles you trained still need up to ${Math.round(r.musclesLeft)} h, so pick a sport that uses others.` : "Nothing left to recover."}</p></div></div>
+    <div class="card">${title("Today's training", "bolt", z.col)}<p style="margin:0"><b>${z.load}</b>. ${z.hr}.</p>
+      <div class="stack" style="gap:8px;margin-top:10px">${r.sports.map(s => `<div style="display:flex;gap:10px;align-items:flex-start"><span style="flex:none;width:22px;height:22px;display:grid">${icon(sportIcon(s.sp), s.ok && r.score >= 40 ? C.mint : C.amber)}</span><div><b style="font-size:14px">${s.sp === "Weightlifting" ? "Lifting" : s.sp}</b>
+        <span class="note" style="display:block;font-size:12px">${r.score < 40 ? "Rest first" : s.ok ? "Muscles ready" : `Go easy on ${s.low.map(x => `${x.m.toLowerCase()} (${Math.round(x.pct * 100)}%)`).join(", ")}`}</span></div></div>`).join("")}</div></div>
+    ${chart ? `<div class="card">${title("Last 14 days", "bars", C.mint)}${chart}</div>` : ""}
+    <div class="card">${title("What's in your score", "info", C.violet, `${r.have} of ${r.of} signals`)}${parts}
+      <p class="note" style="margin-top:8px">Each signal is compared with your own last 30 days, not population averages. HRV and resting HR use how much they normally vary for you, so a real change stands out from day-to-day noise. ${r.have < 5 ? "Missing signals are left out rather than guessed." : ""}</p></div>
+    <button class="btn primary" data-rec="ask">${icon("claude")} Ask Claude how to recover faster</button></div>`);
+  animateRings(document.getElementById("sheetBody"));
+}
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-rec]"); if (!t) return;
+  if (t.dataset.rec === "open") recoverySheet();
+  else { const r = recovery(); closeSheet(); sendChat(`My recovery is ${r ? r.score + "%" : "unknown"} today. ${r ? r.parts.map(p => `${p.label}: ${p.score} (${p.detail}).`).join(" ") : ""} What should I do today and tonight to recover faster, given my sports?`); }
+});
+
+/* Charge now uses the full recovery model, so Today, body battery and Claude all see the same number. */
+const baseCharge = charge;
+charge = function () { const r = recovery(); return r ? r.score : baseCharge(); };
+
 /* ---------- every heart reading, hour by hour ---------- */
 function rawHeartSheet(hour) {
   const raw = S.data.heartRaw || []; if (!raw.length) return;
@@ -1865,7 +1987,7 @@ function healthSummary() {
     now: new Date().toLocaleString([], { weekday: "long", year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
     profile: { age: p.age || null, weightKg: p.weight || null, sex: p.sex || null },
     goals: CO.goals() || null,
-    pulseCharge: charge(),
+    pulseRecovery: (() => { const r = recovery(); return r ? { percent: r.score, sevenDayAvg: r.avg7, signals: r.parts.map(p => ({ signal: p.label, score: p.score, detail: p.detail })), sportsNotReady: r.sports.filter(s => !s.ok).map(s => s.sp) } : null; })(),
     heartRateToday: hr.length ? { latest: Math.round(hr[hr.length - 1]), low: Math.round(Math.min(...hr)), high: Math.round(Math.max(...hr)), readings: hr.length } : null,
     irregularRhythmAlerts: d.alerts.length ? { count: d.alerts.length, mostRecent: d.alerts[0].toLocaleString() } : 0,
     bodyBattery: (() => { const b = battery(); return b ? { now: b.now, startedAt: b.start } : null; })(),
@@ -1888,7 +2010,7 @@ const COACH_SYSTEM = `You are Claude, built into Pulse, a personal health app th
 How to work:
 - Use only the numbers in the data below. Never invent a reading. If something they ask about isn't in the data, say so in one line.
 - Judge each number against their own 14-day baseline first, then against general norms. Name the actual numbers ("HRV 41 ms vs your 48 average").
-- Fitbit Air has no ECG, GPS or stress sensor. Pulse Charge and the sleep score are Pulse's own estimates. Totals for today are partial until the day ends.
+- Fitbit Air has no ECG, GPS or stress sensor. Pulse Recovery and the sleep score are Pulse's own estimates. Totals for today are partial until the day ends.
 - Training advice is concrete: what to do today, how hard (easy, moderate, hard, or a heart-rate range), and for how long.
 - You are not a doctor and don't diagnose. If you see irregular-rhythm alerts, average SpO2 under 92%, resting heart rate 8+ bpm above baseline for 3+ days, or skin temperature 1 °C+ above baseline, say calmly that it's worth checking with a doctor, and why.
 - If the data source says DEMO DATA, mention once, briefly, that these are sample numbers.
@@ -1897,7 +2019,7 @@ How to work:
 const CHECKUP_ASK = `Give me today's checkup. Format:
 First line: one punchy sentence on how my body is doing today (no heading).
 ## How you're doing
-2 to 4 sentences covering recovery (sleep, HRV, resting HR, Charge) and activity, with the key numbers vs my baseline.
+2 to 4 sentences covering recovery (sleep, HRV, resting HR, Pulse Recovery %) and activity, with the key numbers vs my baseline.
 ## Today's plan
 3 bullets: training (what and how hard), recovery or sleep, and one small habit toward my goals.
 ## Watch
