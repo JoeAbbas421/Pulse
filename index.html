@@ -203,6 +203,13 @@ textarea.goals { width: 100%; border-radius: 16px; resize: vertical; font-size: 
 .iconbtn[disabled], .askbar input[disabled] { opacity: .5; }
 a.btn { text-decoration: none; display: inline-block; }
 @media (prefers-reduced-motion: reduce) { .thinking { animation: none; } }
+.quickrow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.qbtn { appearance: none; border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 22px; padding: 16px 6px 14px; display: flex; flex-direction: column; align-items: center; gap: 4px; font: inherit; cursor: pointer; transition: transform .12s; }
+.qbtn svg { width: 28px; height: 28px; color: var(--mint); margin-bottom: 2px; }
+.qbtn b { font: 700 15px var(--body); }
+.qbtn span { font-size: 11px; color: var(--muted); }
+.qbtn:active { transform: scale(.96); background: var(--surface-strong); }
+.qbtn:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
 </style>
 </head><body>
 
@@ -563,7 +570,7 @@ function todayScreen() {
       <div class="pills">${pill("Sleep score", n ? sleepScore(n) : "—", C.violet)}${pill("HRV", latest("hrv") ? Math.round(latest("hrv").value) + " ms" : "—", C.sky)}${pill("Resting HR", latest("restingHeartRate") ? Math.round(latest("restingHeartRate").value) + " bpm" : "—", C.pink)}</div>
     </div>
     ${checkupCard(true)}
-    ${W.active() ? workoutCard() : ""}
+    ${quickBlock()}
     ${activityRings()}
     ${hr.length > 1 ? `<button class="card tap" data-metric="avgHeartRate" style="text-align:left;color:inherit;font:inherit">${title("Heart rate today", "heart", C.pink, now ? now + " bpm now" : "")}${hrChart(hr)}</button>` : ""}
     ${["Activity", "Heart", "Body & recovery"].map(cat => `<h2>${cat}</h2>${tiles(METRICS.filter(m => m.cat === cat).map(m => m.id))}`).join("")}
@@ -587,7 +594,7 @@ function sleepScreen() {
           return `<div class="bar-row"><span>${st.label}</span><div class="track"><div class="fill" style="width:${mins / total * 100}%;background:${st.color}"></div></div><span class="t">${fmtDur(mins)}</span></div>`; }).join("")}</div></div>` : ""}
       <div class="card">${title(`Last ${nights.length} nights`, "cal", C.sky, "avg " + fmtDur(avg(nights.map(x => x.asleep))))}${nightsChart(nights)}</div>`;
   }
-  return header("Sleep", "Recovery") + `<div class="stack">${body}<h2>While you slept</h2>${tiles(["hrv", "breathingRate", "spo2", "skinTemp"])}</div>`;
+  return header("Sleep", "Recovery") + `<div class="stack">${bedBlock()}${body}<h2>While you slept</h2>${tiles(["hrv", "breathingRate", "spo2", "skinTemp"])}</div>`;
 }
 
 function heartScreen() {
@@ -1171,6 +1178,81 @@ if (!canUseGoogle() && !W.sessions().length) {
   W.save([{ id: String(start), sport: "Football", start, end }]);
 }
 
+/* ---------- one-tap buttons: going to bed, padel, weightlifting ---------- */
+const BED = {
+  active() { try { return JSON.parse(store.get("pulse.bed")); } catch { return null; } },
+  log() { try { return JSON.parse(store.get("pulse.beds")) || []; } catch { return []; } },
+  save: l => store.set("pulse.beds", JSON.stringify(l.slice(0, 60))),
+};
+Object.assign(P, { sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>' });
+
+function quickRow() {
+  const b = [["bed", "Bed", "moon", "Going to sleep"], ["Padel", "Padel", "racket", "Start session"], ["Weightlifting", "Lift", "lift", "Start session"]];
+  return `<div class="quickrow">${b.map(([k, l, ic, s]) => `<button class="qbtn" data-q1="${k}">${icon(ic)}<b>${l}</b><span>${s}</span></button>`).join("")}</div>`;
+}
+function bedCard() {
+  const b = BED.active();
+  return `<div class="card status" style="border-color:rgba(216,35,60,.45)"><span class="badge" style="background:rgba(216,35,60,.18)">${icon("moon", C.violet)}</span>
+    <div style="flex:1;min-width:0"><strong>Good night</strong><p>In bed since ${time(new Date(b.start))} · <span data-bedclock>${fmtDur((Date.now() - b.start) / 60000)}</span></p></div>
+    <button class="btn primary" data-q1="up" style="flex:none">${icon("sun")} I'm up</button></div>`;
+}
+function quickBlock() { return W.active() ? workoutCard() : BED.active() ? bedCard() : quickRow(); }
+
+/* Match a tapped bedtime to the night your Air recorded. */
+function nightFor(e) {
+  const ns = mainNights().filter(n => n.end > e.start - 3600000 && n.start < (e.end || Date.now()));
+  return ns.slice(-1)[0] || null;
+}
+function asleepAfter(e, n) {
+  const s = n && n.stages.find(x => x.kind !== "awake"); if (!s) return null;
+  const m = (s.start - e.start) / 60000; return m >= 0 && m < 240 ? Math.round(m) : null;
+}
+function showBed(e) {
+  if (!e) return;
+  const n = nightFor(e), after = asleepAfter(e, n);
+  const head = `<div><div class="eyebrow">Sleep · ${new Date(e.end).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</div>
+    <h1>${n ? fmtDur(n.asleep) + " asleep" : "Good morning"}</h1></div>`;
+  const pills = `<div class="card pills" style="margin:0">${pill("You tapped Bed", time(new Date(e.start)), C.violet)}${pill("Fell asleep after", after != null ? fmtDur(after) : "—", C.sky)}${pill("You got up", time(new Date(e.end)), C.amber)}${n ? pill("Time in bed", fmtDur((e.end - e.start) / 60000), C.mint) : ""}</div>`;
+  const body = n ? `<div class="card hero">
+      <div class="ringwrap" style="width:124px;height:124px">${ring(sleepScore(n) / 100, [C.violet, C.sky], 124, 14)}<div class="center"><div><div class="big" style="font-size:34px">${sleepScore(n)}</div><div class="sub">SCORE</div></div></div></div>
+      <div class="hero-copy"><strong>${after == null ? "Your Air's view of the night" : after <= 20 ? "You fell asleep quickly" : after <= 40 ? "Normal time to fall asleep" : "It took a while to fall asleep"}</strong>
+      <p>${n.stages.length ? `Deep ${fmtDur(n.minutes(["deep"]))}, REM ${fmtDur(n.minutes(["rem"]))}, awake ${fmtDur(n.awake)}.` : ""} Under 20 minutes to fall asleep is ideal.</p></div></div>
+      ${pills}${n.stages.length ? `<div class="card">${title("Stages", "bars", C.violet, `${time(n.start)} – ${time(n.end)}`)}${hypnogram(n)}</div>` : ""}`
+    : `${pills}<div class="card status"><span class="badge" style="background:rgba(255,138,61,.16)">${icon("sync", C.amber)}</span>
+      <div><strong>Waiting for your Air to sync</strong><p>Your sleep stages show up once the Air syncs to Google. Open the Fitbit / Google Health app, then tap Refresh.</p></div></div>
+      <button class="btn ghost" data-q1="reopen" data-start="${e.start}">${icon("sync")} Refresh</button>`;
+  openSheet(`<div class="stack" style="margin-top:10px">${head}${body}
+    <button class="btn primary" data-q1="asknight">${icon("claude")} Ask Claude about last night</button></div>`);
+  animateRings(document.getElementById("sheetBody"));
+}
+function bedBlock() {
+  const recent = BED.log().slice(0, 5);
+  return (BED.active() ? bedCard() : `<button class="btn primary" data-q1="bed" style="width:100%">${icon("moon")} Going to bed</button>`)
+    + (recent.length ? `<h2>Bedtimes you logged</h2>` + recent.map((e, i) => { const n = nightFor(e), a = asleepAfter(e, n);
+      return `<button class="card tap workout" data-q1="open" data-i="${i}" style="text-align:left;color:inherit;font:inherit;width:100%"><span class="ic">${icon("moon")}</span>
+        <div class="mid"><b>${new Date(e.end).toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</b><span>Bed ${time(new Date(e.start))} · up ${time(new Date(e.end))}</span></div>
+        <div class="end"><b>${n ? fmtDur(n.asleep) : "—"}</b><span>${a != null ? "asleep in " + fmtDur(a) : n ? "slept" : "not synced"}</span></div></button>`; }).join("") : "");
+}
+
+document.addEventListener("click", async e => {
+  const t = e.target.closest("[data-q1]"); if (!t) return;
+  const k = t.dataset.q1;
+  if (k === "bed") { if (W.active()) return liveScreen(); store.set("pulse.bed", JSON.stringify({ start: Date.now() })); render(); }
+  else if (k === "up") {
+    const b = BED.active(); if (!b) return;
+    const entry = { start: b.start, end: Date.now() };
+    store.set("pulse.bed", null);
+    if (entry.end - entry.start < 5 * 60000) return render();
+    BED.save([entry, ...BED.log()]); render(); showBed(entry);
+    if (S.mode === "live") { await sync(); if (document.getElementById("sheet").classList.contains("open")) showBed(entry); }
+  }
+  else if (k === "open") showBed(BED.log()[+t.dataset.i]);
+  else if (k === "reopen") { const entry = BED.log().find(x => String(x.start) === t.dataset.start); if (S.mode === "live") await sync(); showBed(entry); }
+  else if (k === "asknight") { closeSheet(); sendChat("How did I sleep last night, from when I tapped Bed to when I got up? What should I change tonight?"); }
+  else { if (W.active()) return liveScreen(); store.set("pulse.active", JSON.stringify({ sport: k, start: Date.now() })); liveScreen(); render(); }
+});
+setInterval(() => { const b = BED.active(); if (b) document.querySelectorAll("[data-bedclock]").forEach(el => { el.textContent = fmtDur((Date.now() - b.start) / 60000); }); }, 30000);
+
 /* ---------- Claude coach: reads a summary of your data, gives a daily checkup and answers questions ---------- */
 /* Three ways to reach Claude, best first:
    1. Your own Anthropic API key (on Pulse's own web address): calls Claude straight from this phone.
@@ -1241,6 +1323,7 @@ function healthSummary() {
     pulseCharge: charge(),
     heartRateToday: hr.length ? { latest: Math.round(hr[hr.length - 1]), low: Math.round(Math.min(...hr)), high: Math.round(Math.max(...hr)), readings: hr.length } : null,
     irregularRhythmAlerts: d.alerts.length ? { count: d.alerts.length, mostRecent: d.alerts[0].toLocaleString() } : 0,
+    bedtimesLogged: BED.log().slice(0, 14).map(e => { const n = nightFor(e); return { date: day(new Date(e.end)), tappedBed: time(new Date(e.start)), gotUp: time(new Date(e.end)), fellAsleepMinutesAfterTap: asleepAfter(e, n), asleepMin: n ? Math.round(n.asleep) : null }; }),
     sleep: nights,
     metrics,
     workoutsLoggedByAir: d.workouts.slice(0, 12).map(w => ({ type: w.type, date: day(w.start), minutes: Math.round(w.active ?? (w.end - w.start) / 60000),
