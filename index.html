@@ -203,11 +203,22 @@ textarea.goals { width: 100%; border-radius: 16px; resize: vertical; font-size: 
 .iconbtn[disabled], .askbar input[disabled] { opacity: .5; }
 a.btn { text-decoration: none; display: inline-block; }
 @media (prefers-reduced-motion: reduce) { .thinking { animation: none; } }
-.quickrow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.qbtn { appearance: none; border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 22px; padding: 16px 6px 14px; display: flex; flex-direction: column; align-items: center; gap: 4px; font: inherit; cursor: pointer; transition: transform .12s; }
+.quickrow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.mlabel { font: 700 11px var(--body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
+.mchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.mchip { border: 1px solid var(--line); border-radius: 99px; padding: 5px 10px; font: 600 12px var(--body); color: var(--muted); }
+.mchip.on { background: rgba(255,46,69,.16); border-color: rgba(255,46,69,.5); color: var(--fg); }
+.mlist { margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.5; }
+.mlist li { margin: 3px 0; }
+.mlist li::marker { color: var(--mint); }
+.mwarn { margin: 10px 0 0; font-size: 13px; color: #ffb38a; display: flex; gap: 6px; align-items: flex-start; }
+.mwarn svg { width: 16px; height: 16px; flex: none; margin-top: 2px; }
+.mfocus .note svg { width: 14px; height: 14px; vertical-align: -2px; color: var(--amber, #ff8a3d); }
+.qchip.on { background: rgba(255,46,69,.2); border-color: var(--mint); }
+.qbtn { appearance: none; border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 20px; padding: 14px 4px 12px; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; font: inherit; cursor: pointer; transition: transform .12s; }
 .qbtn svg { width: 28px; height: 28px; color: var(--mint); margin-bottom: 2px; }
 .qbtn b { font: 700 15px var(--body); }
-.qbtn span { font-size: 11px; color: var(--muted); }
+.qbtn span { font-size: 10.5px; text-align: center; color: var(--muted); }
 .qbtn:active { transform: scale(.96); background: var(--surface-strong); }
 .qbtn:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
 .setform { display: grid; grid-template-columns: 1fr 64px 64px 46px; gap: 8px; align-items: center; }
@@ -659,7 +670,7 @@ function activityScreen() {
     <div class="card status"><div class="ringwrap" style="width:64px;height:64px">${ring(week / 150, [C.pink, C.amber], 64, 9)}</div>
       <div><strong>${Math.round(week)} / 150 zone minutes</strong><p>${week >= 150 ? "Weekly target hit. Nice work." : `${Math.round(150 - week)} more this week to hit the WHO target.`}</p></div></div>
     ${tiles(METRICS.filter(m => m.cat === "Activity").map(m => m.id))}
-    ${sessionsList()}${liftsCard()}${physioCard()}
+    ${muscleRecoveryCard()}${sessionsList()}${liftsCard()}${physioCard()}
     <h2>Workouts your Air logged</h2>
     ${w.length ? w.map(x => `<div class="card workout"><span class="ic">${icon(workoutIcon(x.type))}</span>
       <div class="mid"><b>${esc(x.type)}</b><span>${x.start.toLocaleString([], { weekday: "long", hour: "numeric", minute: "2-digit" })}</span></div>
@@ -942,12 +953,12 @@ async function sync() {
 
 /* ---------- workout sessions: you start and stop, Pulse pulls what your Air recorded in between ---------- */
 const SPORTS = [
-  ["Padel", "racket"], ["Football", "ball"], ["Weightlifting", "lift"], ["Hydro physio", "swim"],
+  ["Padel", "racket"], ["Football", "ball"], ["Weightlifting", "lift"], ["Hydro physio", "swim"], ["Rock climbing", "climb"],
   ["Running", "run"], ["Walking", "walk"], ["Cycling", "bike"], ["Strength", "lift"], ["HIIT", "bolt"],
   ["Basketball", "ball"], ["Tennis", "racket"], ["Swimming", "swim"], ["Boxing", "fist"], ["Yoga", "yoga"],
   ["Hiking", "walk"], ["Dance", "spark"], ["Other", "heart"],
 ];
-const INTENSITY = { Weightlifting: .55, "Hydro physio": .42, Running: .78, Walking: .45, Cycling: .7, Strength: .55, HIIT: .82, Football: .74, Basketball: .76, Tennis: .66, Padel: .62, Swimming: .7, Boxing: .8, Yoga: .35, Hiking: .55, Dance: .6, Other: .6 };
+const INTENSITY = { Weightlifting: .55, "Hydro physio": .42, Running: .78, Walking: .45, Cycling: .7, Strength: .55, HIIT: .82, Football: .74, Basketball: .76, Tennis: .66, Padel: .62, "Rock climbing": .65, Swimming: .7, Boxing: .8, Yoga: .35, Hiking: .55, Dance: .6, Other: .6 };
 Object.assign(P, {
   ball: '<circle cx="12" cy="12" r="9"/><path d="M12 7l4 3-1.5 4.5h-5L8 10z"/>',
   racket: '<ellipse cx="10" cy="9" rx="6" ry="6"/><path d="M14.5 13.5 21 20"/>',
@@ -1231,7 +1242,7 @@ document.addEventListener("click", e => {
   else if (a === "cancel") { store.set("pulse.active", null); closeSheet(); render(); }
   else if (a === "end") {
     const act = W.active(); if (!act) return;
-    const sess = { id: String(act.start), sport: act.sport, start: act.start, end: Date.now(), ...(act.sets ? { sets: act.sets } : {}), ...(act.painBefore != null ? { painBefore: act.painBefore } : {}) };
+    const sess = { id: String(act.start), sport: act.sport, start: act.start, end: Date.now(), ...(act.sets ? { sets: act.sets } : {}), ...(act.painBefore != null ? { painBefore: act.painBefore } : {}), ...(act.focus ? { focus: act.focus } : {}) };
     if (sess.end - sess.start < 60000) { store.set("pulse.active", null); closeSheet(); render(); return; }
     W.save([sess, ...W.sessions()]); store.set("pulse.active", null); render(); openSession(sess.id);
   }
@@ -1246,7 +1257,7 @@ if (!canUseGoogle() && !W.sessions().length) {
   W.save([{ id: String(start), sport: "Football", start, end }]);
 }
 
-/* ---------- one-tap buttons: going to bed, padel, weightlifting ---------- */
+/* ---------- one-tap buttons: going to bed, padel, weightlifting, climbing ---------- */
 const BED = {
   active() { try { return JSON.parse(store.get("pulse.bed")); } catch { return null; } },
   log() { try { return JSON.parse(store.get("pulse.beds")) || []; } catch { return []; } },
@@ -1255,14 +1266,14 @@ const BED = {
 Object.assign(P, { sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>' });
 
 function quickRow() {
-  const b = [["bed", "Bed", "moon", "Going to sleep"], ["Padel", "Padel", "racket", "Start session"], ["Weightlifting", "Lift", "lift", "Start session"]];
+  const b = [["bed", "Bed", "moon", "Sleep"], ["Padel", "Padel", "racket", "Start"], ["Weightlifting", "Lift", "lift", "Start"], ["Rock climbing", "Climb", "climb", "Start"]];
   return `<div class="quickrow">${b.map(([k, l, ic, s]) => `<button class="qbtn" data-q1="${k}">${icon(ic)}<b>${l}</b><span>${s}</span></button>`).join("")}</div>`;
 }
 function bedCard() {
   const b = BED.active();
   return `<div class="card status" style="border-color:rgba(216,35,60,.45)"><span class="badge" style="background:rgba(216,35,60,.18)">${icon("moon", C.violet)}</span>
     <div style="flex:1;min-width:0"><strong>Good night</strong><p>In bed since ${time(new Date(b.start))} · <span data-bedclock>${fmtDur((Date.now() - b.start) / 60000)}</span></p></div>
-    <button class="btn primary" data-q1="up" style="flex:none">${icon("sun")} I'm up</button></div>`;
+    <button class="btn primary" data-q1="up" style="flex:none">${icon("sun")} I'm up</button></div>${typeof bedStretches === "function" ? bedStretches() : ""}`;
 }
 function quickBlock() { return W.active() ? workoutCard() : BED.active() ? bedCard() : quickRow(); }
 
@@ -1524,7 +1535,7 @@ const baseLiveScreen = liveScreen;
 liveScreen = function () {
   baseLiveScreen();
   const act = W.active(), box = document.querySelector("#sheetBody .live"); if (!act || !box) return;
-  const extra = LIFT_SPORTS.includes(act.sport) ? setLogger("active") : act.sport === PHYSIO ? physioBlock("active", true) : "";
+  const extra = focusCard("active") + (LIFT_SPORTS.includes(act.sport) ? setLogger("active") : act.sport === PHYSIO ? physioBlock("active", true) : "");
   if (extra) box.querySelector('[data-w="end"]').insertAdjacentHTML("beforebegin", `<div style="margin:18px 0 6px">${extra}</div>`);
 };
 const baseOpenSession = openSession;
@@ -1537,6 +1548,7 @@ openSession = async function (id, refresh) {
     extra += setLogger(s.id) + exs.map(ex => { const a = liftAdvice(ex, hist); return a ? `<div class="card status" style="padding:12px 14px"><span class="badge" style="width:36px;height:36px;background:${C[a.tone]}22">${icon("lift", C[a.tone])}</span><div><strong style="font-size:14px">${esc(ex)}</strong><p>${a.text}</p></div></div>` : ""; }).join("");
   }
   if (s.sport === PHYSIO) extra += physioBlock(s.id, false);
+  extra = musclesWorkedCard(s) + extra;
   if (!extra) return;
   const anchor = root.querySelector('[data-c="debrief"]');
   anchor ? anchor.insertAdjacentHTML("beforebegin", extra) : root.insertAdjacentHTML("beforeend", extra);
@@ -1575,6 +1587,166 @@ if (!canUseGoogle() && !store.get("pulse.demoExtras")) {
   W.save([...W.sessions(), ...extra].sort((a, b) => b.start - a.start));
   store.set("pulse.physioArea", "Left knee");
   store.set("pulse.demoExtras", "1");
+}
+
+/* ---------- muscle focus: what each sport works, how to warm up, cool down and when each muscle is ready again ---------- */
+Object.assign(P, { climb: '<path d="M7 21l3-6 3 2 2-5M14 6.5a1.5 1.5 0 1 0 0-.01M10 15l-1-4 4-3 4 2M19 3l-2 4"/>' });
+const BIG = ["Chest", "Upper back", "Lats", "Glutes", "Quads", "Hamstrings", "Lower back"];
+const STRETCH = {
+  "Shoulders": "Cross-body shoulder stretch, 30 s each arm",
+  "Chest": "Doorway chest stretch, 30 s",
+  "Upper back": "Child's pose with arms long, 45 s",
+  "Lats": "Kneeling lat stretch on a bench or bed edge, 30 s each side",
+  "Biceps": "Wall biceps stretch, palm back, 30 s each arm",
+  "Triceps": "Overhead triceps stretch, 30 s each arm",
+  "Forearms & grip": "Wrist flexor stretch, arm straight, fingers pulled back, 30 s each",
+  "Core": "Cobra on the floor, 30 s, slow breathing",
+  "Glutes": "Figure-4 stretch on your back, 30 s each side",
+  "Quads": "Lying quad stretch, heel to bum, 30 s each leg",
+  "Hamstrings": "Lying hamstring stretch with a towel, 30 s each leg",
+  "Calves": "Wall calf stretch, 30 s each leg",
+  "Hip flexors & adductors": "Half-kneeling hip flexor stretch, 30 s each side",
+  "Lower back": "Knees-to-chest hug, 45 s",
+};
+const SPORT_FOCUS = {
+  "Padel": {
+    primary: ["Shoulders", "Forearms & grip", "Core", "Quads", "Calves"], secondary: ["Glutes", "Hamstrings", "Upper back", "Hip flexors & adductors"],
+    warm: ["2 min easy jog and side shuffles", "Arm circles and band pull-aparts, 15 each", "Wrist circles and forearm stretches", "10 lunges with a twist", "Shadow swings: forehands, backhands, bandejas"],
+    cues: ["Turn your hips and shoulders together on every stroke, so your arm doesn't do all the work", "Stay low with bent knees for quick lateral moves", "Relax your grip between points to save your forearm and elbow"],
+    cool: ["Shoulders", "Forearms & grip", "Quads", "Calves"], watch: "Elbow (padel elbow), shoulder, knees and Achilles",
+  },
+  "Football": {
+    primary: ["Quads", "Hamstrings", "Glutes", "Calves", "Hip flexors & adductors"], secondary: ["Core", "Lower back"],
+    warm: ["3 min jog with direction changes", "Leg swings, front and side, 10 each", "Walking lunges and high knees", "Hamstring sweeps, 10 each leg", "3 short sprints at 70, 80 and 90%"],
+    cues: ["Land on soft knees when you stop or turn", "Keep your core braced when shooting and tackling", "Drink between halves to protect your hamstrings from cramping"],
+    cool: ["Hamstrings", "Quads", "Hip flexors & adductors", "Calves"], watch: "Hamstrings, groin, ankles and knees",
+  },
+  "Rock climbing": {
+    primary: ["Forearms & grip", "Lats", "Biceps", "Upper back", "Core"], secondary: ["Shoulders", "Calves", "Quads", "Glutes"],
+    warm: ["3 min of arm circles, scapular shrugs and band pull-aparts", "Finger and wrist circles, then gentle finger stretches", "10 scapular pull-ups on a bar or jug", "2 or 3 very easy routes, climbing slowly with straight arms", "Gradually harder holds before any crimps"],
+    cues: ["Climb with straight arms and let your legs push. Your forearms last much longer", "Keep shoulders engaged, not hanging, on steep moves", "Open-hand grip where you can. Full crimps strain finger pulleys", "Rest when your forearms feel pumped, before you fail"],
+    cool: ["Forearms & grip", "Lats", "Shoulders", "Biceps"], watch: "Finger pulleys, elbows and shoulders",
+  },
+  "Hydro physio": {
+    primary: ["Core"], secondary: ["Glutes", "Quads", "Hamstrings"],
+    warm: ["5 min easy walking in the water", "Gentle range-of-motion moves for the injured area", "Slow leg swings holding the side"],
+    cues: ["Move slowly and stay below sharp pain", "Let the water carry your weight, so you can move further than on land", "Breathe steadily and keep your core lightly braced"],
+    cool: ["Glutes", "Hamstrings", "Quads"], watch: "Your injured area: stop if pain goes above 4 out of 10",
+  },
+};
+const LIFT_PLANS = {
+  "Push": { muscles: ["Chest", "Shoulders", "Triceps"], ex: ["Bench press", "Incline dumbbell press", "Overhead press", "Dips", "Tricep pushdown"] },
+  "Pull": { muscles: ["Lats", "Upper back", "Biceps", "Forearms & grip"], ex: ["Pull-up", "Barbell row", "Lat pulldown", "Cable row", "Bicep curl"] },
+  "Legs": { muscles: ["Quads", "Hamstrings", "Glutes", "Calves"], ex: ["Squat", "Romanian deadlift", "Leg press", "Lunges", "Leg curl", "Hip thrust"] },
+  "Full body": { muscles: ["Quads", "Chest", "Upper back", "Shoulders", "Hamstrings"], ex: ["Squat", "Bench press", "Barbell row", "Overhead press", "Romanian deadlift"] },
+};
+const LIFT_WARM = ["3 min easy bike, row or skipping", "Dynamic mobility for today's muscles: 10 reps each", "2 light warm-up sets of your first lift: 50% then 75% of your working weight"];
+const LIFT_CUES = ["Control the lowering part of each rep, about 2 seconds", "Stop each set 1 or 2 reps before failure", "Rest 2 to 3 minutes on big lifts, 60 to 90 seconds on small ones"];
+const EX_MUSCLES = {
+  "Bench press": ["Chest", "Triceps", "Shoulders"], "Squat": ["Quads", "Glutes", "Core"], "Deadlift": ["Hamstrings", "Glutes", "Lower back", "Forearms & grip"],
+  "Overhead press": ["Shoulders", "Triceps", "Core"], "Barbell row": ["Upper back", "Lats", "Biceps"], "Pull-up": ["Lats", "Biceps", "Forearms & grip"],
+  "Lat pulldown": ["Lats", "Biceps"], "Leg press": ["Quads", "Glutes"], "Romanian deadlift": ["Hamstrings", "Glutes", "Lower back"],
+  "Incline dumbbell press": ["Chest", "Shoulders", "Triceps"], "Dumbbell shoulder press": ["Shoulders", "Triceps"], "Hip thrust": ["Glutes", "Hamstrings"],
+  "Lunges": ["Quads", "Glutes", "Hamstrings"], "Leg curl": ["Hamstrings"], "Leg extension": ["Quads"], "Cable row": ["Upper back", "Lats", "Biceps"],
+  "Bicep curl": ["Biceps", "Forearms & grip"], "Tricep pushdown": ["Triceps"], "Dips": ["Triceps", "Chest", "Shoulders"],
+};
+const isLift = sport => LIFT_SPORTS.includes(sport);
+
+/* How hard each muscle was worked in a session: 1 = main mover, 0.5 = helper. Lifting counts your real sets. */
+function sessionMuscles(s) {
+  const out = {};
+  if (s.sets?.length) {
+    for (const set of s.sets) (EX_MUSCLES[set.ex] || []).forEach((m, i) => { out[m] = (out[m] || 0) + (i === 0 ? 1 : .5); });
+    const sets = Math.max(...Object.values(out), 0);
+    return { muscles: Object.fromEntries(Object.entries(out).map(([m, v]) => [m, Math.min(v / 3, 1)])), hard: sets >= 8 };
+  }
+  const f = SPORT_FOCUS[s.sport] || (isLift(s.sport) && s.focus ? { primary: LIFT_PLANS[s.focus].muscles, secondary: [] } : null);
+  if (!f) return { muscles: {}, hard: false };
+  f.primary.forEach(m => out[m] = 1); f.secondary.forEach(m => out[m] = out[m] || .5);
+  const load = s.result?.status === "ready" ? s.result.load : (INTENSITY[s.sport] || .6) * (s.end - s.start) / 60000 * 1.5;
+  return { muscles: out, hard: load >= 90 };
+}
+/* Readiness per muscle: hours since you last worked it vs how long that muscle usually needs (48 to 72 h for big muscles after hard work). */
+function muscleReadiness() {
+  const now = Date.now(), res = {};
+  for (const s of W.sessions()) {
+    if (now - s.end > 5 * DAY) continue;
+    const { muscles, hard } = sessionMuscles(s);
+    for (const [m, w] of Object.entries(muscles)) {
+      const need = (BIG.includes(m) ? (hard ? 72 : 48) : (hard ? 48 : 36)) * (w >= 1 ? 1 : .7);
+      const left = need - (now - s.end) / 3600000;
+      if (!res[m] || left > res[m].left) res[m] = { left, need, pct: Math.max(0, Math.min(1, 1 - left / need)), sport: s.sport, when: s.end };
+    }
+  }
+  return res;
+}
+const readyText = r => r.left <= 0 ? "ready" : r.left < 1 ? "under an hour" : `${Math.ceil(r.left)} h to go`;
+function chips(list, on) { return `<div class="mchips">${list.map(m => `<span class="mchip${on ? " on" : ""}">${esc(m)}</span>`).join("")}</div>`; }
+function readinessWarning(muscles) {
+  const r = muscleReadiness(), tired = muscles.filter(m => r[m] && r[m].pct < .7);
+  return tired.length ? `<p class="mwarn">${icon("alert")} Still recovering: ${tired.map(m => `${esc(m)} (${Math.round(r[m].pct * 100)}%)`).join(", ")}. Go lighter on ${tired.length > 1 ? "these" : "this"} today.</p>` : "";
+}
+
+function focusCard(where) {
+  const t = readTarget(where); if (!t) return "";
+  let html;
+  if (isLift(t.sport)) {
+    const plan = t.focus ? LIFT_PLANS[t.focus] : null;
+    html = `<p class="mlabel">Today's focus</p><div class="quick">${Object.keys(LIFT_PLANS).map(k => `<button class="qchip${t.focus === k ? " on" : ""}" data-m="focus" data-f="${k}" data-where="${where}" aria-pressed="${t.focus === k}">${k}</button>`).join("")}</div>
+      ${plan ? `<p class="mlabel">Muscles</p>${chips(plan.muscles, true)}${readinessWarning(plan.muscles)}
+        <p class="mlabel">Suggested lifts</p><ol class="mlist">${plan.ex.map(e => `<li>${e}</li>`).join("")}</ol>
+        <p class="mlabel">Warm up (5 min)</p><ol class="mlist">${LIFT_WARM.map(w => `<li>${w}</li>`).join("")}</ol>
+        <p class="mlabel">Focus on</p><ul class="mlist">${LIFT_CUES.map(c => `<li>${c}</li>`).join("")}</ul>`
+      : `<p class="note" style="margin-top:8px">Pick a focus and Pulse shows the muscles, the best lifts and a warm-up for them.</p>`}`;
+  } else {
+    const f = SPORT_FOCUS[t.sport]; if (!f) return "";
+    html = `<p class="mlabel">Main muscles</p>${chips(f.primary, true)}<p class="mlabel">Helping muscles</p>${chips(f.secondary, false)}${readinessWarning(f.primary)}
+      <p class="mlabel">Warm up (5 min)</p><ol class="mlist">${f.warm.map(w => `<li>${w}</li>`).join("")}</ol>
+      <p class="mlabel">Focus on</p><ul class="mlist">${f.cues.map(c => `<li>${c}</li>`).join("")}</ul>
+      <p class="note" style="margin-top:8px">${icon("alert")} Watch: ${f.watch}.</p>`;
+  }
+  return `<div class="card mfocus" id="mfocus-${where}" style="text-align:left">${title("Muscle focus", "bolt", C.mint, esc(t.sport))}${html}</div>`;
+}
+function musclesWorkedCard(s) {
+  const { muscles, hard } = sessionMuscles(s); const list = Object.entries(muscles).sort((a, b) => b[1] - a[1]);
+  if (!list.length) return "";
+  const main = list.filter(([, w]) => w >= .75).map(([m]) => m), help = list.filter(([, w]) => w < .75).map(([m]) => m);
+  const longest = Math.max(...list.map(([m, w]) => (BIG.includes(m) ? (hard ? 72 : 48) : (hard ? 48 : 36)) * (w >= 1 ? 1 : .7)));
+  const cool = (SPORT_FOCUS[s.sport]?.cool || main).slice(0, 4);
+  return `<div class="card">${title("Muscles worked", "bolt", C.mint, hard ? "hard session" : "moderate session")}
+    ${main.length ? `<p class="mlabel" style="margin-top:0">Worked hard</p>${chips(main, true)}` : ""}${help.length ? `<p class="mlabel">Helped out</p>${chips(help, false)}` : ""}
+    <p style="margin:12px 0 0">Give ${main.length > 1 ? "these muscles" : "this muscle"} about <b>${Math.round(longest)} hours</b> before training ${main.length > 1 ? "them" : "it"} hard again.</p>
+    <p class="mlabel">Cool down now (4 min)</p><ul class="mlist">${cool.map(m => `<li>${STRETCH[m] || m}</li>`).join("")}</ul></div>`;
+}
+function muscleRecoveryCard() {
+  const r = muscleReadiness(), list = Object.entries(r).sort((a, b) => a[1].pct - b[1].pct);
+  if (!list.length) return "";
+  return `<h2>Muscle recovery</h2><div class="card">${title("Ready to train?", "bolt", C.mint, "last 5 days")}<div class="stack" style="gap:10px">${list.map(([m, x]) =>
+    `<div class="bar-row" style="grid-template-columns:118px 1fr 74px"><span>${esc(m)}</span><div class="track"><div class="fill" style="width:${x.pct * 100}%;background:${x.pct >= 1 ? C.mint : x.pct >= .7 ? C.sky : C.amber}"></div></div><span class="t">${readyText(x)}</span></div>`).join("")}</div>
+    <p class="note" style="margin-top:10px">Based on what you trained and how hard. Big muscles need 48 to 72 hours after a hard session, small ones 36 to 48.</p></div>`;
+}
+function bedStretches() {
+  const today0 = startOfDay(new Date()).getTime(), used = {};
+  W.sessions().filter(s => s.end >= today0).forEach(s => Object.entries(sessionMuscles(s).muscles).forEach(([m, w]) => used[m] = Math.max(used[m] || 0, w)));
+  const top = Object.entries(used).sort((a, b) => b[1] - a[1]).map(([m]) => m).slice(0, 4);
+  const list = top.length ? top : ["Hip flexors & adductors", "Hamstrings", "Upper back", "Lower back"];
+  return `<div class="card" style="text-align:left">${title("Before you sleep", "moon", C.violet, top.length ? "for today's muscles" : "")}
+    <p class="note" style="margin-bottom:8px">${top.length ? "You worked these today. Easy stretching now helps them recover overnight." : "A short wind-down stretch helps you fall asleep faster."}</p>
+    <ul class="mlist">${list.map(m => `<li>${STRETCH[m]}</li>`).join("")}</ul></div>`;
+}
+
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-m='focus']"); if (!t) return;
+  const where = t.dataset.where, f = t.dataset.f;
+  editTarget(where, s => { s.focus = f; });
+  store.set("pulse.lastEx", LIFT_PLANS[f].ex[0]);
+  const fc = document.getElementById("mfocus-" + where); if (fc) fc.outerHTML = focusCard(where);
+  const lg = document.getElementById("logger-" + where); if (lg) lg.outerHTML = setLogger(where);
+});
+if (!canUseGoogle() && !store.get("pulse.demoClimb")) {
+  const start = Date.now() - DAY - 4 * 3600000;
+  W.save([...W.sessions(), { id: String(start), sport: "Rock climbing", start, end: start + 80 * 60000 }].sort((a, b) => b.start - a.start));
+  store.set("pulse.demoClimb", "1");
 }
 
 /* ---------- every heart reading, hour by hour ---------- */
@@ -1701,6 +1873,7 @@ function healthSummary() {
     weekReport: (() => { const w = weekReport(); return { overall: letter(w.overall), grades: w.rows.map(r => ({ [r.k]: letter(r.s), why: r.why })) }; })(),
     lifts: Object.fromEntries(Object.entries(liftHistory()).map(([ex, h]) => [ex, h.slice(-6).map(x => ({ date: day(x.date), topSet: `${x.top.kg}kg x ${x.top.reps}`, est1RM: Math.round(x.e1), volumeKg: Math.round(x.vol) }))])),
     physio: { area: store.get("pulse.physioArea") || null, sessions: W.sessions().filter(s => s.sport === "Hydro physio").slice(0, 10).map(s => ({ date: day(new Date(s.start)), minutes: Math.round((s.end - s.start) / 60000), painBefore: s.painBefore ?? null, painAfter: s.painAfter ?? null })) },
+    muscleReadiness: Object.fromEntries(Object.entries(muscleReadiness()).map(([m, r]) => [m, { readyPercent: Math.round(r.pct * 100), hoursToGo: Math.max(0, Math.round(r.left)), lastWorkedBy: r.sport }])),
     bedtimesLogged: BED.log().slice(0, 14).map(e => { const n = nightFor(e); return { date: day(new Date(e.end)), tappedBed: time(new Date(e.start)), gotUp: time(new Date(e.end)), fellAsleepMinutesAfterTap: asleepAfter(e, n), asleepMin: n ? Math.round(n.asleep) : null }; }),
     sleep: nights,
     metrics,
