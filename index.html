@@ -341,7 +341,8 @@ const store = {
   set(k, v) { v == null ? memory.delete(k) : memory.set(k, v); try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
 };
 const S = { mode: null, tab: "today", data: null, syncing: false, error: null, sources: [] };
-const HISTORY = 14;
+const HISTORY = 14;   // days shown in charts
+const BASE_DAYS = 30; // days fetched, so your personal baselines are steadier
 
 /* ---------- demo data ---------- */
 function demo() {
@@ -397,7 +398,9 @@ function demo() {
     return { type, start, end: new Date(start.getTime() + min * 60000), calories: min * rnd(7, 11), hr: rnd(118, 156),
       km: type === "Run" ? min / 5.6 : type === "Outdoor bike" ? min / 2.4 : null };
   });
-  return { daily, heart, nights, workouts, alerts: [], lastSync: new Date() };
+  const heartRaw = []; // demo: a reading every 5 seconds, wobbling around the 5-minute values
+  heart.forEach((p, i) => { for (let k = 0; k < 60; k++) { const t = new Date(p.time.getTime() + k * 5000); if (t > Date.now()) break; heartRaw.push({ t, bpm: p.bpm + Math.sin((i * 60 + k) / 7) * 3 + rnd(-2, 2) }); } });
+  return { daily, heart, heartRaw, nights, workouts, alerts: [], lastSync: new Date() };
 }
 
 function nightFrom(start, end, stages, summary, main) {
@@ -415,19 +418,23 @@ function sleepScore(n) {
   const eff = Math.min(Math.max((n.asleep / Math.max(n.inBed, 1) - .75) / .2, 0), 1) * 25;
   return Math.round(dur + rest + eff);
 }
-const series = id => S.data?.daily[id] || [];
+const fullSeries = id => S.data?.daily[id] || [];
+const series = id => fullSeries(id).slice(-HISTORY);
+const median = vals => { if (!vals.length) return null; const v = [...vals].sort((a, b) => a - b), m = v.length >> 1; return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2; };
+const fresh = (p, hours = 36) => !!p && Date.now() - p.date < hours * 3600000; // a daily value counts only if it's from last night / today
 const latest = id => { const s = series(id); return s.length ? s[s.length - 1] : null; };
 const todayVal = id => { const l = latest(id); return l && isToday(l.date) ? l.value : null; };
 const avg = (vals) => vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
-const baseline = id => avg(series(id).slice(0, -1).map(p => p.value));
+const baseline = id => median(fullSeries(id).slice(0, -1).map(p => p.value)); // median ignores one-off odd days
 const mainNights = () => (S.data?.nights || []).filter(n => n.main).sort((a, b) => a.end - b.end);
 const lastNight = () => mainNights().slice(-1)[0] || null;
 const clamp = v => Math.min(Math.max(v, 0), 100);
 function charge() {
   const parts = [];
-  const n = lastNight(); if (n) parts.push([sleepScore(n), .4]);
-  const h = latest("hrv"), hb = baseline("hrv"); if (h && hb) parts.push([clamp(70 + (h.value / hb - 1) * 200), .35]);
-  const r = latest("restingHeartRate"), rb = baseline("restingHeartRate"); if (r && rb) parts.push([clamp(70 - (r.value - rb) * 6), .25]);
+  // Only last night's data counts. An old night or a missing HRV reading is left out rather than reused.
+  const n = lastNight(); if (n && Date.now() - n.end < 20 * 3600000) parts.push([sleepScore(n), .4]);
+  const h = fresh(latest("hrv")) ? latest("hrv") : null, hb = baseline("hrv"); if (h && hb) parts.push([clamp(70 + (h.value / hb - 1) * 200), .35]);
+  const r = fresh(latest("restingHeartRate")) ? latest("restingHeartRate") : null, rb = baseline("restingHeartRate"); if (r && rb) parts.push([clamp(70 - (r.value - rb) * 6), .25]);
   if (!parts.length) return null;
   return Math.round(parts.reduce((a, [s, w]) => a + s * w, 0) / parts.reduce((a, [, w]) => a + w, 0));
 }
@@ -610,7 +617,7 @@ function todayScreen() {
 }
 
 function sleepScreen() {
-  const n = lastNight(), nights = mainNights();
+  const n = lastNight(), nights = mainNights().slice(-HISTORY);
   let body;
   if (!n) body = empty("No sleep yet", "Wear your Fitbit Air to bed and your sleep stages show up here in the morning.", "moon");
   else {
@@ -633,7 +640,8 @@ function heartScreen() {
   return header("Heart", "Your heart") + `<div class="stack">
     ${hr.length > 1 ? `<div class="card">${title("Today", "heart", C.pink)}
       <div class="pills" style="margin:0 0 12px">${pill("Now", Math.round(b[b.length - 1]), C.pink)}${pill("Low", Math.round(Math.min(...b)), C.sky)}${pill("High", Math.round(Math.max(...b)), C.amber)}${pill("Resting", latest("restingHeartRate") ? Math.round(latest("restingHeartRate").value) : "—", C.mint)}</div>
-      ${hrChart(hr, 180)}<p class="note" style="margin-top:8px">Based on ${fmtDur(hr.length * 5)} of heart-rate readings today, averaged every 5 minutes.</p></div>` : ""}
+      ${hrChart(hr, 180)}<p class="note" style="margin-top:8px">Based on ${fmtDur(hr.length * 5)} of heart-rate readings today, shown as the middle value of every 5 minutes.</p>
+      ${(S.data.heartRaw || []).length ? `<button class="btn ghost" data-x="hrraw" style="width:100%;margin-top:12px">${icon("wave")} Every reading, second by second</button>` : ""}</div>` : ""}
     <div class="card status"><span class="badge" style="background:${alerts.length ? C.amber : C.mint}22">${icon(alerts.length ? "alert" : "shield", alerts.length ? C.amber : C.mint)}</span>
       <div><strong>${alerts.length ? `${alerts.length} irregular rhythm alert${alerts.length > 1 ? "s" : ""}` : "No irregular rhythm detected"}</strong>
       <p>${alerts.length ? `Most recent ${alerts[0].toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}. Talk to a doctor about these.` : "Your Air checks your heart rhythm for signs of AFib while you're still or asleep."}</p></div></div>
@@ -687,6 +695,7 @@ function youScreen() {
           <div class="btnrow">${S.mode === "live" ? `<button class="btn primary" id="syncNow">Sync now</button><button class="btn ghost" id="signOut">Sign out</button>` : `<button class="btn primary" id="connect">Connect Google Health</button>`}</div>`
         : `<p class="note">This preview runs on demo data. To see your own Fitbit Air data, open Pulse from its own web address (see the setup guide), where Google sign-in works.</p>`}
       </div></div>
+    ${qualityCard()}
     ${profileCard()}
     <div class="card">${title("What your Fitbit Air tracks", "spark", C.mint)}<div class="caps">${CAPS.map(([ic, n, d]) => `<div class="cap">${icon(ic)}<div><b>${n}</b><span>${d}</span></div></div>`).join("")}</div></div>
     ${S.sources.length ? `<div class="card">${title("Data inspector", "info", C.violet)}<div class="stack" style="gap:8px">${S.sources.map(s => `<div style="display:flex;justify-content:space-between;gap:10px;font:500 12px var(--mono)"><span style="min-width:0;overflow-wrap:anywhere">${esc(s.type)}</span><span style="color:${s.error ? C.pink : s.count ? C.mint : "var(--muted)"};flex:none">${s.error ? "error" : s.count + (s.skipped ? ` · ${s.skipped} skipped` : "")}</span></div>${s.error ? `<p class="note" style="font-size:11px">${esc(s.error)}</p>` : ""}`).join("")}</div></div>` : ""}
@@ -878,21 +887,23 @@ async function sync() {
     S.error = "Your Google sign-in expired. Tap Connect Google Health to sign in again."; S.mode = null; S.data = null; render(); return;
   }
   S.syncing = true; S.error = null; if (S.data) render();
-  const start = new Date(startOfDay(new Date()).getTime() - (HISTORY - 1) * DAY);
+  const start = new Date(startOfDay(new Date()).getTime() - (BASE_DAYS - 1) * DAY);
   const data = { daily: {}, heart: [], nights: [], workouts: [], alerts: [], lastSync: new Date() };
   const sources = [];
   const job = async (type, fn) => { const stats = { skipped: 0 }; try { const n = await fn(stats); sources.push({ type, count: n, skipped: stats.skipped }); } catch (e) { sources.push({ type, error: e.message === "expired" ? "Sign-in expired" : e.message }); } };
   await Promise.all([
     ...METRICS.map(m => job(m.fetch[1], async stats => {
-      const pts = m.fetch[0] === "rollup" ? await rollup(m.fetch[1], start, HISTORY) : await list(m.fetch[1], `${m.fetch[2]}.date >= "${isoDay(start)}"`, 100);
+      const pts = m.fetch[0] === "rollup" ? await rollup(m.fetch[1], start, BASE_DAYS) : await list(m.fetch[1], `${m.fetch[2]}.date >= "${isoDay(start)}"`, 100);
       data.daily[m.id] = toDays(pts, m, stats); return data.daily[m.id].length;
     })),
     job("heart-rate (today)", async () => {
       const pts = await list("heart-rate", `heartRate.sample_time.physical_time >= "${iso(startOfDay(new Date()))}"`, 10000, 5);
       const b = new Map();
       for (const p of pts) { const h = p.heartRate; const v = inRange(num(h?.beatsPerMinute), 25, 230), t = toDate(h?.sampleTime?.physicalTime); if (v == null || !t) continue;
-        const k = Math.floor(t.getTime() / 300000) * 300000; const c = b.get(k) || [0, 0]; b.set(k, [c[0] + v, c[1] + 1]); }
-      data.heart = [...b].map(([k, [s, n]]) => ({ time: new Date(k), bpm: s / n })).sort((a, c) => a.time - c.time); return data.heart.length;
+        const k = Math.floor(t.getTime() / 300000) * 300000; (b.get(k) || b.set(k, []).get(k)).push(v); }
+      data.heart = [...b].map(([k, vs]) => ({ time: new Date(k), bpm: median(vs), n: vs.length })).sort((a, c) => a.time - c.time);
+      data.heartRaw = pts.map(p => ({ t: toDate(p.heartRate?.sampleTime?.physicalTime), bpm: inRange(num(p.heartRate?.beatsPerMinute), 25, 230) })).filter(x => x.t && x.bpm != null).sort((a, c) => a.t - c.t);
+      return data.heart.length;
     }),
     job("sleep", async () => {
       const pts = await list("sleep", `sleep.interval.end_time >= "${iso(start)}"`, 25, 2);
@@ -958,8 +969,13 @@ let tick = null;
    Zones use heart-rate reserve (Karvonen), the same idea Fitbit uses: fat burn 40–59%, cardio 60–84%, peak 85%+. */
 function hrProfile() {
   const pr = W.profile(), age = num(pr.age) || 30;
-  const rest = latest("restingHeartRate")?.value || 60, max = Math.round(208 - .7 * age);
-  return { age, rest, max, sex: pr.sex || null, weight: num(pr.weight), ageSet: !!num(pr.age) };
+  // Resting HR: median of your last 7 readings, so one bad night doesn't shift every zone.
+  const rest = median(fullSeries("restingHeartRate").slice(-7).map(p => p.value)) || 60;
+  // Max HR: the formula is only an average for your age. Once a workout shows you go higher, Pulse uses your real, measured max.
+  const tanaka = Math.round(208 - .7 * age), seen = num(store.get("pulse.maxSeen")), manual = num(pr.maxHr);
+  const max = manual && manual > 120 && manual < 230 ? Math.round(manual) : seen && seen > tanaka ? Math.round(seen) : tanaka;
+  const maxHow = manual && manual > 120 && manual < 230 ? "you entered" : seen && seen > tanaka ? "your highest measured" : "estimated from your age";
+  return { age, rest, max, maxHow, sex: pr.sex || null, weight: num(pr.weight), ageSet: !!num(pr.age) };
 }
 const ZONES = [
   { id: "below", label: "Easy", lo: 0, color: "#6b4a50" },
@@ -969,10 +985,27 @@ const ZONES = [
 ];
 const zoneOf = (bpm, h) => { const r = (bpm - h.rest) / (h.max - h.rest); return r >= .85 ? "peak" : r >= .6 ? "cardio" : r >= .4 ? "fat" : "below"; };
 
+/* Motion artefacts: on the wrist, a racket swing or a tight grip on a bar can throw single readings off.
+   A Hampel filter replaces any reading far from the median of its neighbours with that median. */
+function despike(pts) {
+  const out = pts.map(p => ({ ...p })); let fixed = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const w = pts.slice(Math.max(0, i - 4), i + 5).map(p => p.bpm), med = median(w), mad = median(w.map(v => Math.abs(v - med)));
+    if (w.length >= 5 && Math.abs(pts[i].bpm - med) > Math.max(3 * 1.4826 * mad, 12)) { out[i].bpm = med; fixed++; }
+  }
+  return { pts: out, fixed };
+}
+/* Highest heart rate held for about 30 seconds: a real peak, not a one-sample blip. */
+function sustainedPeak(pts) {
+  let best = null;
+  for (let i = 0; i < pts.length; i++) { const w = pts.filter(p => Math.abs(p.t - pts[i].t) <= 15000); if (w.length >= 3) { const m = median(w.map(p => p.bpm)); if (best == null || m > best) best = m; } }
+  return best;
+}
 function analyse(sess, raw) {
   const start = new Date(sess.start), end = new Date(sess.end), h = hrProfile();
   const mins = (end - start) / 60000;
-  const all = raw.hr.filter(s => s.t >= start && s.t <= new Date(end.getTime() + 180000)).sort((a, b) => a.t - b.t);
+  const clean = despike(raw.hr.filter(s => s.t >= start && s.t <= new Date(end.getTime() + 180000)).sort((a, b) => a.t - b.t));
+  const all = clean.pts;
   const during = all.filter(s => s.t <= end);
   const zones = Object.fromEntries(ZONES.map(z => [z.id, 0]));
   let covered = 0, trimp = 0, kcalEst = 0;
@@ -993,7 +1026,7 @@ function analyse(sess, raw) {
     status: during.length ? "ready" : "waiting",
     mins, samples: all.map(s => ({ t: s.t.getTime(), bpm: s.bpm })),
     avg: bpms.length ? avg(bpms) : null, max: bpms.length ? Math.max(...bpms) : null, min: bpms.length ? Math.min(...bpms) : null,
-    coverage: mins > 0 ? Math.min(covered / mins, 1) : 0, zones,
+    coverage: mins > 0 ? Math.min(covered / mins, 1) : 0, zones, cleaned: clean.fixed, peak30: sustainedPeak(during),
     load: Math.round(trimp), recovery1: endHr != null && r1 != null ? Math.round(endHr - r1) : null, recovery2: endHr != null && r2 != null ? Math.round(endHr - r2) : null,
     steps: raw.steps, km: raw.km, azm: raw.azm,
     kcal: raw.kcal != null ? { v: raw.kcal, how: raw.kcalHow || "from Google Health" } : kcalEst > 0 ? { v: kcalEst, how: "estimated from your heart rate" } : null,
@@ -1125,7 +1158,8 @@ async function openSession(id, refresh = false) {
   const list = W.sessions(), s = list.find(x => x.id === id); if (!s) return;
   if (!s.result || refresh || s.result.status !== "ready") {
     openSheet(`<div class="stack" style="margin-top:40px;text-align:center"><div class="big" style="font-size:20px">Reading your workout…</div><p class="note">Pulling everything your Air recorded during this session.</p></div>`);
-    try { s.result = S.mode === "live" ? await fetchSession(s) : demoSession(s); s.error = null; }
+    try { s.result = S.mode === "live" ? await fetchSession(s) : demoSession(s); s.error = null;
+      const pk = s.result?.peak30; if (S.mode === "live" && pk && s.result.coverage >= .7 && pk <= 225 && pk > (num(store.get("pulse.maxSeen")) || 0)) store.set("pulse.maxSeen", String(Math.round(pk))); }
     catch (e) { s.error = e.message === "expired" ? "Your Google sign-in expired. Connect again from the You tab." : e.message; }
     W.save(list);
   }
@@ -1160,7 +1194,7 @@ async function openSession(id, refresh = false) {
       <p class="note" style="margin-top:10px">How fast your heart rate falls after you stop is one of the best signs of fitness. Above 12 bpm in the first minute is normal; above 20 is strong.</p></div>
     <div class="card"><div class="stack" style="gap:6px">
       <p class="note">Heart data covers ${Math.round(r.coverage * 100)}% of this session${r.coverage < .9 ? ", so some numbers may be low. Wear the Air snug during workouts" : ""}.</p>
-      <p class="note">Calories: ${r.kcal ? r.kcal.how : "add your age, weight and sex in the You tab for an estimate"}. Zones and load use max heart rate ${r.profile.max} bpm${r.profile.ageSet ? "" : " (set your age in the You tab to make this exact)"} and resting heart rate ${Math.round(r.profile.rest)} bpm.</p>
+      <p class="note">Calories: ${r.kcal ? r.kcal.how : "add your age, weight and sex in the You tab for an estimate"}. Zones and load use max heart rate ${r.profile.max} bpm (${r.profile.maxHow || "estimated from your age"}${r.profile.ageSet || r.profile.maxHow !== "estimated from your age" ? "" : "; set your age in the You tab"}) and resting heart rate ${Math.round(r.profile.rest)} bpm.${r.cleaned ? ` ${r.cleaned} jumpy reading${r.cleaned > 1 ? "s" : ""} from wrist movement were smoothed out.` : ""}</p>
     </div></div>
     <button class="btn primary" data-c="debrief" data-id="${id}">${icon("claude")} Ask Claude about this session</button>
     <div class="btnrow"><button class="btn ghost" data-w="refresh" data-id="${id}">Refresh</button><button class="btn ghost" data-w="delete" data-id="${id}">${icon("trash")} Delete</button></div>
@@ -1176,11 +1210,13 @@ function profileCard() {
       <label class="field" for="pAge">Age<input id="pAge" inputmode="numeric" value="${esc(p.age || "")}" placeholder="30"></label>
       <label class="field" for="pWeight">Weight (kg)<input id="pWeight" inputmode="decimal" value="${esc(p.weight || "")}" placeholder="75"></label>
       <label class="field" for="pSex">Sex<select id="pSex"><option value="">—</option><option value="male" ${p.sex === "male" ? "selected" : ""}>Male</option><option value="female" ${p.sex === "female" ? "selected" : ""}>Female</option></select></label>
-    </div></div>`;
+    </div>
+    <label class="field" for="pMax" style="margin-top:12px">Max heart rate (optional)<input id="pMax" inputmode="numeric" value="${esc(p.maxHr || "")}" placeholder="${hrProfile().max} · ${hrProfile().maxHow}"></label>
+    <p class="note" style="margin-top:6px">Leave it empty and Pulse learns your real max from your hardest workouts. Only fill it in if you've had a lab or max-effort test.</p></div>`;
 }
 document.addEventListener("change", e => {
-  if (!["pAge", "pWeight", "pSex"].includes(e.target.id)) return;
-  store.set("pulse.profile", JSON.stringify({ age: document.getElementById("pAge").value.trim(), weight: document.getElementById("pWeight").value.trim(), sex: document.getElementById("pSex").value }));
+  if (!["pAge", "pWeight", "pSex", "pMax"].includes(e.target.id)) return;
+  store.set("pulse.profile", JSON.stringify({ age: document.getElementById("pAge").value.trim(), weight: document.getElementById("pWeight").value.trim(), sex: document.getElementById("pSex").value, maxHr: document.getElementById("pMax").value.trim() }));
 });
 
 let picked = null;
@@ -1417,16 +1453,16 @@ function batteryCard() {
     <div class="battery"><div class="batt"><div class="fill" style="width:${b.now}%;background:${col}"></div></div><b style="color:${col}">${b.now}</b></div>
     <p style="margin:8px 0 0;font-weight:700">${batteryLabel(b.now)}</p>
     <svg class="chart" viewBox="0 0 ${Wd} ${H}" style="margin-top:8px" aria-hidden="true"><path d="${line}" fill="none" stroke="${col}" stroke-width="2"/></svg>
-    <p class="note">Pulse's estimate. It starts each morning at your Charge, drains slowly while you're awake and faster in your heart-rate zones.</p></div>`;
+    <p class="note">Pulse's estimate. It starts each morning at your Charge, drains slowly while you're awake and faster in your heart-rate zones.${(() => { const c = heartCoverage(b.wake); return c == null ? "" : c >= .8 ? ` Based on ${Math.round(c * 100)}% of today's heart data.` : ` <span style="color:${C.amber}">Only ${Math.round(c * 100)}% of today's heart data so far, so treat this as rough.</span>`; })()}</p></div>`;
 }
 
 /* --- sick early warning --- */
 function sickCheck() {
   const out = [];
   const add = (id, label, test, show) => {
-    const s = series(id); if (s.length < 5) return;
+    const s = fullSeries(id); if (s.length < 5) return;
     const last = s[s.length - 1]; if (Date.now() - last.date > 2.5 * DAY) return;
-    const base = avg(s.slice(-15, -1).map(p => p.value));
+    const base = median(s.slice(0, -1).map(p => p.value));
     out.push({ id, label, on: test(last.value, base), text: show(last.value, base) });
   };
   add("skinTemp", "Skin temperature", v => v >= .5, v => `${v > 0 ? "+" : ""}${v.toFixed(1)} °C vs your baseline`);
@@ -1539,6 +1575,55 @@ if (!canUseGoogle() && !store.get("pulse.demoExtras")) {
   W.save([...W.sessions(), ...extra].sort((a, b) => b.start - a.start));
   store.set("pulse.physioArea", "Left knee");
   store.set("pulse.demoExtras", "1");
+}
+
+/* ---------- every heart reading, hour by hour ---------- */
+function rawHeartSheet(hour) {
+  const raw = S.data.heartRaw || []; if (!raw.length) return;
+  const hours = [...new Set(raw.map(p => new Date(p.t).getHours()))];
+  if (hour == null || !hours.includes(hour)) hour = hours[hours.length - 1];
+  const day0 = startOfDay(new Date()).getTime(), a = day0 + hour * 3600000, z = a + 3600000;
+  const pts = raw.filter(p => p.t >= a && p.t < z), clean = despike(pts.map(p => ({ t: +p.t, bpm: p.bpm })));
+  const b = clean.pts.map(p => p.bpm), gaps = pts.slice(1).map((p, i) => (p.t - pts[i].t) / 1000);
+  const Wd = 340, H = 200, L = 4, R = 30, T = 10, B = 22, lo = Math.min(...b) - 4, hi = Math.max(...b) + 4;
+  const x = t => L + (Wd - L - R) * (t - a) / 3600000, y = v => T + (H - B - T) * (1 - (v - lo) / Math.max(hi - lo, 1));
+  const path = clean.pts.map((p, i) => `${i && p.t - clean.pts[i - 1].t < 120000 ? "L" : "M"}${x(p.t).toFixed(1)},${y(p.bpm).toFixed(1)}`).join("");
+  openSheet(`<div class="stack" style="margin-top:10px">
+    <div><div class="eyebrow">Heart rate · every reading</div><h1>${String(hour).padStart(2, "0")}:00 – ${String((hour + 1) % 24).padStart(2, "0")}:00</h1></div>
+    <div class="quick" style="flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px">${hours.map(h => `<button class="qchip${h === hour ? " on" : ""}" data-x="hrhour" data-h="${h}" style="flex:none${h === hour ? ";background:var(--mint);color:#fff;border-color:transparent" : ""}">${String(h).padStart(2, "0")}:00</button>`).join("")}</div>
+    <div class="card"><svg class="chart" viewBox="0 0 ${Wd} ${H}" role="img" aria-label="Every heart-rate reading in this hour">
+      ${[lo + 4, (lo + hi) / 2, hi - 4].map(v => `<line x1="${L}" x2="${Wd - R}" y1="${y(v)}" y2="${y(v)}" stroke="rgba(255,255,255,.07)"/><text x="${Wd - R + 4}" y="${y(v) + 3}">${Math.round(v)}</text>`).join("")}
+      <path d="${path}" fill="none" stroke="${C.mint}" stroke-width="1.4" stroke-linejoin="round"/>
+      ${[0, 15, 30, 45].map(m => `<text x="${x(a + m * 60000)}" y="${H - 6}">:${String(m).padStart(2, "0")}</text>`).join("")}</svg></div>
+    <div class="card pills" style="margin:0">${pill("Readings", pts.length.toLocaleString(), C.mint)}${pill("Every", gaps.length ? Math.max(1, Math.round(median(gaps))) + " s" : "—", C.sky)}${pill("Low", Math.round(Math.min(...b)), C.sky)}${pill("Avg", Math.round(avg(b)), C.pink)}${pill("High", Math.round(Math.max(...b)), C.amber)}</div>
+    <p class="note">These are all the readings Google stored from your Air for this hour. The Air measures more often when you move (often every 1 to 5 seconds) and less often when you're still, to save battery.${clean.fixed ? ` ${clean.fixed} jumpy reading${clean.fixed > 1 ? "s" : ""} from wrist movement were smoothed.` : ""}</p></div>`);
+}
+document.addEventListener("click", e => { const t = e.target.closest("[data-x='hrraw'],[data-x='hrhour']"); if (!t) return; rawHeartSheet(t.dataset.h != null ? +t.dataset.h : null); });
+
+/* ---------- data quality: how much of what Pulse shows is backed by real readings ---------- */
+function heartCoverage(from) {
+  const mins = (Date.now() - from) / 60000; if (mins < 30) return null;
+  const n = S.data.heart.filter(p => p.time >= from).length;
+  return Math.min(n * 5 / mins, 1);
+}
+function qualityCard() {
+  if (!S.data) return "";
+  const n = lastNight(), fr = n && Date.now() - n.end < 20 * 3600000, hp = hrProfile();
+  const wake = fr ? n.end : startOfDay(new Date()), cov = heartCoverage(wake);
+  const days = Math.max(...["restingHeartRate", "hrv", "steps"].map(id => fullSeries(id).length), 0);
+  const ses = W.sessions().find(x => x.result?.status === "ready");
+  const row = (ok, label, text) => `<div class="sigrow"><span class="sd" style="background:${ok === true ? C.mint : ok === false ? C.amber : "rgba(255,255,255,.25)"}"></span><b>${label}</b><span>${text}</span></div>`;
+  return `<div class="card">${title("Data quality", "shield", C.mint)}
+    <p class="note" style="margin-bottom:12px">Pulse only shows numbers your Air actually measured. This is how complete they are right now.</p>
+    <div class="stack" style="gap:9px">
+      ${row(cov == null ? null : cov >= .8, "Heart rate today", cov == null ? "too early to tell" : `${Math.round(cov * 100)}% of the day covered`)}
+      ${row(n ? fr && n.stages.length > 0 : false, "Last night", !n ? "no sleep recorded" : !fr ? "no sleep recorded last night" : n.stages.length ? "full sleep stages" : "sleep without stages")}
+      ${row(days >= 21, "Your baseline", `${days} of ${BASE_DAYS} days`)}
+      ${row(hp.maxHow !== "estimated from your age", "Max heart rate", `${hp.max} bpm, ${hp.maxHow}`)}
+      ${row(W.profile().age && W.profile().weight && W.profile().sex ? true : false, "Your body", W.profile().age && W.profile().weight && W.profile().sex ? "age, weight and sex set" : "add age, weight and sex below")}
+      ${ses ? row(ses.result.coverage >= .9, "Last workout", `${Math.round(ses.result.coverage * 100)}% heart coverage${ses.result.cleaned ? `, ${ses.result.cleaned} jumpy readings fixed` : ""}`) : ""}
+    </div>
+    <p class="note" style="margin-top:12px"><b style="color:var(--fg)">For the best readings:</b> wear the Air snug, a finger's width above your wrist bone. For padel, football and lifting, slide it 2 fingers higher and tighten it one notch, because wrist bending is the biggest source of error. Wear it to bed every night, and keep the Fitbit / Google Health app syncing.</p></div>`;
 }
 
 /* ---------- Claude coach: reads a summary of your data, gives a daily checkup and answers questions ---------- */
