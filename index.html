@@ -638,6 +638,7 @@ function todayScreen() {
     ${quickBlock()}
     ${mealsCard()}
     ${suppCard()}
+    ${screenCard()}
     ${batteryCard()}
     ${activityRings()}
     ${weekCard()}
@@ -2136,6 +2137,82 @@ function suppSummary() {
     myData: suppEffect(s.key).rows.map(r => r.need != null ? { metric: r.label, status: `needs ${r.need} more days` } : { metric: r.label, withIt: Math.round(r.with), withoutIt: Math.round(r.without), difference: r.sure }) }));
 }
 
+/* ---------- screen time: a start/stop timer (a web app can't read iPhone Screen Time), or type in the total from Settings > Screen Time. Compared with your own sleep and recovery. ---------- */
+Object.assign(P, { phone: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>' });
+const SCR = {
+  active() { try { return JSON.parse(store.get("pulse.screenOn")); } catch { return null; } },
+  data() { try { const d = JSON.parse(store.get("pulse.screen")) || {}; return { sessions: d.sessions || [], manual: d.manual || {} }; } catch { return { sessions: [], manual: {} }; } },
+  save(d) { const cut = Date.now() - 60 * DAY; d.sessions = d.sessions.filter(s => s.end > cut); const ks = Object.keys(d.manual).sort().slice(-60); d.manual = Object.fromEntries(ks.map(k => [k, d.manual[k]])); store.set("pulse.screen", JSON.stringify(d)); },
+};
+// Evening = the 2 hours before you fell asleep that night (from your Air), or after 9 pm if there's no night recorded yet.
+function screenDay(t0) {
+  const d = SCR.data(), on = SCR.active(), end = t0 + DAY, sess = d.sessions.concat(on ? [{ start: on.start, end: Date.now() }] : []);
+  const overlap = (a, b) => sess.reduce((m, s) => m + Math.max(0, Math.min(s.end, b) - Math.max(s.start, a)), 0) / 60000;
+  const n = nightFor0(t0 + DAY), bed = n && n.start >= t0 + 12 * 3600000 && n.start < end + 6 * 3600000 ? +n.start : null;
+  const eveFrom = bed ? bed - 2 * 3600000 : t0 + 21 * 3600000, eveTo = bed || end + 3 * 3600000;
+  const timed = overlap(t0 + 4 * 3600000, end + 4 * 3600000), manual = d.manual[dayKey(t0)];
+  return { total: manual != null ? manual : (timed || null), timed, manual: manual != null, evening: overlap(eveFrom, eveTo), bedKnown: !!bed, any: manual != null || timed > 0 };
+}
+const SCREEN_EFFECT_METRICS = ["latency", "deep", "efficiency", "hrv", "recovery"];
+function screenEffect() {
+  const t0 = startOfDay(new Date()).getTime(), days = Array.from({ length: 29 }, (_, i) => t0 - (i + 1) * DAY).filter(k => screenDay(k).any);
+  const split = (name, pick, thr) => {
+    const hi = days.filter(k => pick(screenDay(k)) >= thr), lo = days.filter(k => pick(screenDay(k)) < thr);
+    return { name, thr, rows: SCREEN_EFFECT_METRICS.map(m => {
+      const M = SUPP_METRICS[m], a = hi.map(M.get).filter(v => v != null), b = lo.map(M.get).filter(v => v != null);
+      if (a.length < 5 || b.length < 5) return { label: M.label, need: Math.max(0, 5 - a.length) + Math.max(0, 5 - b.length), a: a.length, b: b.length };
+      const ma = median(a), mb = median(b), diff = ma - mb, spread = sd([...a, ...b]) || 1, z = diff / (spread * Math.sqrt(1 / a.length + 1 / b.length));
+      return { label: M.label, unit: M.unit, hi: ma, lo: mb, sure: Math.abs(z) >= 2 ? "clear" : Math.abs(z) >= 1 ? "possible" : "none", worse: M.up ? diff < 0 : diff > 0 };
+    }) };
+  };
+  const totals = days.map(k => screenDay(k).total).filter(v => v != null), med = totals.length ? Math.round(median(totals)) : 0;
+  return { days: days.length, evening: split("evening", s => s.evening, 30), total: split("total", s => s.total || 0, Math.max(med, 60)), median: med };
+}
+function screenCard() {
+  const on = SCR.active(), t0 = startOfDay(new Date()).getTime(), td = screenDay(t0), d = SCR.data(), man = d.manual[dayKey(t0)];
+  const yest = screenDay(t0 - DAY);
+  return `<div class="card" id="screenCard">${title("Screen time", "phone", C.sky, td.total ? fmtDur(td.total) + " today" : "")}
+    <button class="btn ${on ? "ghost" : "primary"}" data-scr="${on ? "stop" : "start"}" style="width:100%">${icon("phone")} ${on ? `Stop · on for <span data-scrclock>${fmtDur((Date.now() - on.start) / 60000)}</span>` : "Start counting screen time"}</button>
+    <div class="pills" style="margin-top:12px">${pill("Timed today", td.timed ? fmtDur(td.timed) : "0m", C.sky)}${pill("Last night, 2h before sleep", yest.evening ? fmtDur(yest.evening) : "0m", yest.evening >= 30 ? C.amber : C.mint)}</div>
+    <div style="display:flex;gap:8px;margin-top:12px;align-items:center"><input id="scrManual" type="number" inputmode="numeric" min="0" max="1440" placeholder="iPhone total, minutes" value="${man != null ? man : ""}" style="flex:1;min-width:0;background:var(--surface-strong);border:1px solid var(--line);border-radius:12px;color:var(--fg);padding:10px 12px;font:600 15px var(--body)"><button class="btn ghost" data-scr="save">Save</button></div>
+    <p class="note" style="margin-top:8px">Pulse can't read your iPhone's Screen Time, so tap Start when you pick up your phone and Stop when you put it down. For the exact daily total, copy it from Settings, then Screen Time, then See All App &amp; Website Activity.</p>
+    <button class="btn ghost" data-scr="open" style="width:100%;margin-top:10px">${icon("info")} How screens affect your body</button></div>`;
+}
+function screenSheet() {
+  const e = screenEffect(), fm = (v, u) => fmtM(v, u);
+  const block = (s, hiL, loL) => `<ul class="mlist">${s.rows.map(r => r.need != null
+    ? `<li>${r.label}: needs ${r.need} more day${r.need > 1 ? "s" : ""} (${r.a} ${hiL}, ${r.b} ${loL} so far)</li>`
+    : `<li><b>${r.label}:</b> ${fm(r.hi, r.unit)} ${hiL} vs ${fm(r.lo, r.unit)} ${loL}. ${r.sure === "none" ? "No real difference yet." : `<span style="color:${r.worse ? C.amber : C.mint}">${r.sure === "clear" ? "Clear" : "Possible"} ${r.worse ? "worse" : "better"}</span> after screen-heavy days${r.sure === "possible" ? ", but it could still be chance." : "."}`}</li>`).join("")}</ul>`;
+  openSheet(`<div class="stack" style="margin-top:10px"><div><div class="eyebrow">Screen time</div><h1>What screens do to you</h1></div>
+    <div class="card"><p class="mlabel" style="margin-top:0">What research shows</p>
+      <p style="margin:0">Using a phone in bed and in the hour before sleep is linked with falling asleep later, sleeping less and feeling less rested. The main reasons are your brain staying alert (scrolling, messages, games) and pushing your bedtime later. Bright light, including blue light, also delays melatonin, the hormone that makes you sleepy, but at normal phone brightness that effect is small.</p>
+      <p style="margin:8px 0 0">Shorter or lighter sleep then shows up the next morning as lower HRV, a higher resting heart rate and a lower recovery score. Long total screen time mostly matters because it replaces sleep and movement.</p>
+      <p class="mlabel">What you might see in Pulse</p><p style="margin:0">On nights with lots of phone use before bed: longer time to fall asleep, less deep sleep, and lower recovery the next morning.</p>
+      <p class="mlabel">What helps</p><ul class="mlist"><li>Put the phone down 30 to 60 minutes before bed, and charge it away from your bed.</li><li>If you do use it, turn on Night Shift and lower the brightness, and avoid exciting content.</li><li>Use the Bed button so Pulse knows when you tried to sleep.</li></ul>
+      <p class="note" style="margin-top:8px">Source: <a href="https://pubmed.ncbi.nlm.nih.gov/27802500/" target="_blank" rel="noopener" style="color:var(--mint)">Meta-analysis: screen use at bedtime and sleep (JAMA Pediatrics, 2016)</a></p></div>
+    <div class="card"><p class="mlabel" style="margin-top:0">Your data: evenings with 30+ minutes vs less, in the 2 hours before sleep</p>${block(e.evening, "with", "without")}
+      <p class="mlabel">Your data: days over ${fmtDur(e.total.thr)} total vs under</p>${block(e.total, "over", "under")}
+      <p class="note" style="margin-top:8px">${e.days} day${e.days === 1 ? "" : "s"} of screen time logged in the last 4 weeks. Pulse needs at least 5 days on each side, and it says when a difference could just be chance.</p></div>
+    <button class="btn primary" data-scr="ask">${icon("claude")} Ask Claude about my screen time</button></div>`);
+}
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-scr]"); if (!t) return;
+  const a = t.dataset.scr, re = () => { const c = document.getElementById("screenCard"); if (c) c.outerHTML = screenCard(); };
+  if (a === "start") { store.set("pulse.screenOn", JSON.stringify({ start: Date.now() })); re(); }
+  else if (a === "stop") { const on = SCR.active(); store.set("pulse.screenOn", null); if (on && Date.now() - on.start > 30000) { const d = SCR.data(); d.sessions.push({ start: on.start, end: Math.min(Date.now(), on.start + 16 * 3600000) }); SCR.save(d); } re(); }
+  else if (a === "save") { const v = document.getElementById("scrManual").value.trim(), d = SCR.data(), k = dayKey(new Date());
+    if (v === "") delete d.manual[k]; else { const n = Math.round(+v); if (!(n >= 0 && n <= 1440)) return alert("Type the total in minutes, between 0 and 1440."); d.manual[k] = n; } SCR.save(d); re(); }
+  else if (a === "open") screenSheet();
+  else if (a === "ask") { closeSheet(); sendChat("Look at my screen time, especially in the 2 hours before sleep, and compare it with my time to fall asleep, deep sleep, HRV and recovery. Is it affecting me, and what one change would help most?"); }
+});
+setInterval(() => { const on = SCR.active(); if (on) document.querySelectorAll("[data-scrclock]").forEach(el => { el.textContent = fmtDur((Date.now() - on.start) / 60000); }); }, 30000);
+function screenSummary() {
+  const t0 = startOfDay(new Date()).getTime(), e = screenEffect();
+  return { note: "Timed with a start/stop button or typed from iPhone Screen Time; days without any entry are left out.",
+    days: Array.from({ length: 14 }, (_, i) => t0 - i * DAY).map(k => ({ k, s: screenDay(k) })).filter(x => x.s.any).map(({ k, s }) => ({ date: dayKey(k), totalMin: Math.round(s.total || 0), source: s.manual ? "iPhone Screen Time" : "timer", eveningBeforeSleepMin: Math.round(s.evening) })),
+    myData: [e.evening, e.total].map(s => ({ comparison: s.name === "evening" ? "30+ min in the 2h before sleep vs less" : `over vs under ${s.thr} min total`, rows: s.rows.map(r => r.need != null ? { metric: r.label, status: `needs ${r.need} more days` } : { metric: r.label, heavy: Math.round(r.hi), light: Math.round(r.lo), difference: r.sure }) })) };
+}
+
 /* ---------- every heart reading, hour by hour ---------- */
 function rawHeartSheet(hour) {
   const raw = S.data.heartRaw || []; if (!raw.length) return;
@@ -2261,6 +2338,7 @@ function healthSummary() {
     lifts: Object.fromEntries(Object.entries(liftHistory()).map(([ex, h]) => [ex, h.slice(-6).map(x => ({ date: day(x.date), topSet: `${x.top.kg}kg x ${x.top.reps}`, est1RM: Math.round(x.e1), volumeKg: Math.round(x.vol) }))])),
     meals: mealSummary(),
     supplements: suppSummary(),
+    screenTime: screenSummary(),
     recoveryHistory: (() => { const t0 = startOfDay(new Date()).getTime(); return Array.from({ length: 14 }, (_, i) => t0 - (13 - i) * DAY).map(d => { const r = recoveryAt(d), y = dayContext(d - DAY); return { date: day(new Date(d)), recoveryPercent: r ? r.score : null, dayBefore: { training: y.ses, zoneMinutes: y.zm == null ? null : Math.round(y.zm), strain: y.strain, food: y.food } }; }); })(),
     physio: { area: store.get("pulse.physioArea") || null, sessions: W.sessions().filter(s => s.sport === "Hydro physio").slice(0, 10).map(s => ({ date: day(new Date(s.start)), minutes: Math.round((s.end - s.start) / 60000), painBefore: s.painBefore ?? null, painAfter: s.painAfter ?? null })) },
     muscleReadiness: Object.fromEntries(Object.entries(muscleReadiness()).map(([m, r]) => [m, { readyPercent: Math.round(r.pct * 100), hoursToGo: Math.max(0, Math.round(r.left)), lastWorkedBy: r.sport }])),
@@ -2284,6 +2362,7 @@ How to work:
 - "recoveryHistory" links each morning's recovery to the day before: training (sessions, strain) and food (protein and calories vs plan). Use it to explain today's score and to spot patterns, like recovery dropping after hard days with low protein. Only call something a pattern with at least 3 matching days; otherwise say it's early.
 - "meals" is their nutritionist's meal plan and what they ticked as eaten. Don't change the plan; use it to comment on protein and fuel around training (for example, eating the pre-workout snack before padel or climbing). Missed meals today may just not be ticked yet.
 - "supplements" lists what they take, how often they ticked it in the last 14 days, and their own data with vs without each one. Supplement effects are usually small and slow: only call an effect real when "difference" is "clear", say "possible" ones could be chance, and never invent effects the data doesn't show. Their vitamin D3 is 5000 IU a day, above the standard 4000 IU adult upper limit: suggest a 25-OH vitamin D blood test and checking the dose with a doctor if it comes up. Not medical advice; refer anything medical to a doctor.
+- "screenTime" is phone use they timed or typed from iPhone Screen Time, with minutes in the 2 hours before sleep, and their own sleep/HRV/recovery on heavy vs light days. Days without entries are missing, not zero. Only call an effect real when "difference" is "clear".
 - If the data source says DEMO DATA, mention once, briefly, that these are sample numbers.
 - Write like a good coach texting: warm, direct, short sentences, no filler. Use **bold** only for the key number or action. Use "- " for bullets and "## " for section headings. No tables.`;
 
