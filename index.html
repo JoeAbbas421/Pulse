@@ -203,7 +203,25 @@ textarea.goals { width: 100%; border-radius: 16px; resize: vertical; font-size: 
 .iconbtn[disabled], .askbar input[disabled] { opacity: .5; }
 a.btn { text-decoration: none; display: inline-block; }
 @media (prefers-reduced-motion: reduce) { .thinking { animation: none; } }
-.quickrow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.quickrow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.meal { border-top: 1px solid var(--line); padding: 10px 0 4px; }
+.mealhead { display: flex; align-items: center; gap: 10px; }
+.mcheck { flex: none; width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--line); background: none; color: #fff; font: 800 15px var(--body); display: grid; place-items: center; cursor: pointer; padding: 0; }
+.mcheck.on { background: var(--mint); border-color: var(--mint); }
+.mcheck.part { border-color: var(--mint); color: var(--mint); }
+.mcheck.sm { width: 24px; height: 24px; font-size: 13px; }
+.mealname { flex: 1; min-width: 0; background: none; border: 0; color: inherit; text-align: left; font: inherit; padding: 4px 0; cursor: pointer; display: flex; flex-direction: column; }
+.mealname b { font: 700 15px var(--body); }
+.mealname span { font-size: 12px; color: var(--muted); }
+.meal.done .mealname b { color: var(--muted); text-decoration: line-through; }
+.mealchev { flex: none; width: 32px; height: 32px; background: none; border: 0; color: var(--muted); cursor: pointer; padding: 6px; }
+.mealchev svg { width: 18px; height: 18px; }
+.mealitems { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 4px 40px; }
+.mitem { display: flex; align-items: center; gap: 10px; background: var(--surface-strong); border: 1px solid var(--line); border-radius: 14px; padding: 9px 10px; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.mitem.on { opacity: .6; }
+.mi-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; display: flex; flex-direction: column; }
+.mi-name small { font-size: 11.5px; color: var(--muted); font-weight: 500; }
+.mi-mac { flex: none; font: 600 10.5px var(--mono); color: var(--muted); }
 .mlabel { font: 700 11px var(--body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
 .mchips { display: flex; flex-wrap: wrap; gap: 6px; }
 .mchip { border: 1px solid var(--line); border-radius: 99px; padding: 5px 10px; font: 600 12px var(--body); color: var(--muted); }
@@ -215,9 +233,9 @@ a.btn { text-decoration: none; display: inline-block; }
 .mwarn svg { width: 16px; height: 16px; flex: none; margin-top: 2px; }
 .mfocus .note svg { width: 14px; height: 14px; vertical-align: -2px; color: var(--amber, #ff8a3d); }
 .qchip.on { background: rgba(255,46,69,.2); border-color: var(--mint); }
-.qbtn { appearance: none; border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 20px; padding: 14px 4px 12px; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; font: inherit; cursor: pointer; transition: transform .12s; }
+.qbtn { appearance: none; border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 18px; padding: 12px 2px 10px; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; font: inherit; cursor: pointer; transition: transform .12s; }
 .qbtn svg { width: 28px; height: 28px; color: var(--mint); margin-bottom: 2px; }
-.qbtn b { font: 700 15px var(--body); }
+.qbtn b { font: 700 13.5px var(--body); }
 .qbtn span { font-size: 10.5px; text-align: center; color: var(--muted); }
 .qbtn:active { transform: scale(.96); background: var(--surface-strong); }
 .qbtn:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
@@ -618,6 +636,7 @@ function todayScreen() {
     ${checkupCard(true)}
     ${sickCard(false)}
     ${quickBlock()}
+    ${mealsCard()}
     ${batteryCard()}
     ${activityRings()}
     ${weekCard()}
@@ -1271,7 +1290,7 @@ const BED = {
 Object.assign(P, { sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>' });
 
 function quickRow() {
-  const b = [["bed", "Bed", "moon", "Sleep"], ["Padel", "Padel", "racket", "Start"], ["Weightlifting", "Lift", "lift", "Start"], ["Rock climbing", "Climb", "climb", "Start"]];
+  const b = [["bed", "Bed", "moon", "Sleep"], ["Padel", "Padel", "racket", "Start"], ["Weightlifting", "Lift", "lift", "Start"], ["Rock climbing", "Climb", "climb", "Start"], ["Hydro physio", "Physio", "swim", "Start"]];
   return `<div class="quickrow">${b.map(([k, l, ic, s]) => `<button class="qbtn" data-q1="${k}">${icon(ic)}<b>${l}</b><span>${s}</span></button>`).join("")}</div>`;
 }
 function bedCard() {
@@ -1876,6 +1895,65 @@ document.addEventListener("click", e => {
 const baseCharge = charge;
 charge = function () { const r = recovery(); return r ? r.score : baseCharge(); };
 
+/* ---------- meal plan checklist: tick what you ate, see today's protein, carbs, fat and calories vs your plan ---------- */
+// From Youssef's nutrition app screenshots (2026-11-03). Each item: [name, amount, carbs g, protein g, fat g]
+const MEAL_PLAN = [
+  { name: "Breakfast", items: [["Whole eggs", "4 large", 1.4, 25.1, 19], ["Turkey meat", "100 g", 2, 29.3, 5], ["Brown toast", "4 slices", 61.6, 10.4, 4], ["Butter", "5 g", 0, 0, 4],
+    ["Green salad", "150 g", 10.5, 2.4, .6], ["Omega-3 (Kleansource)", "1 capsule", 0, 0, 0], ["Multivitamin (Kleansource)", "1 tablet", 0, 0, 0]] },
+  { name: "Pre-workout snack", items: [["Banana", "80 g", 18.4, .9, .2]] },
+  { name: "Lunch", items: [["Lean meat", "250 g", 0, 65, 8.8], ["Cooked rice", "180 g", 46.8, 5.2, .7], ["Olive oil", "10 g", 0, 0, 10], ["Green salad", "200 g", 14, 3.2, .8], ["Zero treat sauce", "15 g", 1, 0, 0]] },
+  { name: "Snack", items: [["Juhayna fat-free Greek yogurt", "180 g", 6.5, 14.9, .4], ["Peanut butter", "15 g", 3.4, 3.4, 7.5], ["Apple", "100 g", 14, .3, .2], ["Chia seeds", "3 g", 1.3, .5, .9],
+    ["Magnesium (Kleansource)", "1 serving", 0, 0, 0], ["Zinc (Kleansource)", "1 serving", 0, 0, 0]] },
+];
+const kcal = (c, p, f) => c * 4 + p * 4 + f * 9;
+const dayKey = d => { const x = new Date(d); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`; };
+const MEALS = {
+  log() { try { return JSON.parse(store.get("pulse.mealLog")) || {}; } catch { return {}; } },
+  day(k = dayKey(new Date())) { return this.log()[k] || {}; },
+  set(k, fn) { const l = this.log(), d = l[k] || {}; fn(d); l[k] = d; const keep = Object.keys(l).sort().slice(-60); store.set("pulse.mealLog", JSON.stringify(Object.fromEntries(keep.map(x => [x, l[x]])))); },
+};
+function mealTotals(k) {
+  const d = MEALS.day(k), sum = (on) => MEAL_PLAN.reduce((a, m, mi) => m.items.reduce((b, it, ii) => on(mi, ii) ? [b[0] + it[2], b[1] + it[3], b[2] + it[4]] : b, a), [0, 0, 0]);
+  const plan = sum(() => true), ate = sum((mi, ii) => d[mi + "." + ii]);
+  const items = MEAL_PLAN.flatMap((m, mi) => m.items.map((_, ii) => mi + "." + ii)), done = items.filter(x => d[x]).length;
+  return { plan, ate, done, total: items.length, kcalPlan: Math.round(kcal(...plan)), kcalAte: Math.round(kcal(...ate)) };
+}
+const MEAL_OPEN = new Set();
+function mealsCard() {
+  const k = dayKey(new Date()), d = MEALS.day(k), t = mealTotals(k);
+  const bar = (label, ate, plan, col) => `<div class="bar-row" style="grid-template-columns:62px 1fr 78px"><span>${label}</span><div class="track"><div class="fill" style="width:${Math.min(ate / Math.max(plan, 1), 1) * 100}%;background:${col}"></div></div><span class="t">${Math.round(ate)} / ${Math.round(plan)} g</span></div>`;
+  const meals = MEAL_PLAN.map((m, mi) => {
+    const ids = m.items.map((_, ii) => mi + "." + ii), n = ids.filter(x => d[x]).length, all = n === ids.length, open = MEAL_OPEN.has(mi);
+    const mc = m.items.reduce((a, it) => [a[0] + it[2], a[1] + it[3], a[2] + it[4]], [0, 0, 0]);
+    return `<div class="meal${all ? " done" : ""}">
+      <div class="mealhead"><button class="mcheck${all ? " on" : n ? " part" : ""}" data-meal="all" data-mi="${mi}" aria-pressed="${all}" aria-label="Mark all of ${esc(m.name)} as eaten">${all ? "✓" : n ? "–" : ""}</button>
+        <button class="mealname" data-meal="toggle" data-mi="${mi}" aria-expanded="${open}"><b>${esc(m.name)}</b><span>${n}/${ids.length} · ${Math.round(mc[1])}g protein · ${Math.round(kcal(...mc))} kcal</span></button>
+        <button class="mealchev" data-meal="toggle" data-mi="${mi}" aria-label="Show items" style="transform:rotate(${open ? 90 : -90}deg)">${icon("chev")}</button></div>
+      ${open ? `<div class="mealitems">${m.items.map((it, ii) => { const on = !!d[mi + "." + ii]; return `<button class="mitem${on ? " on" : ""}" data-meal="item" data-id="${mi}.${ii}" aria-pressed="${on}">
+          <span class="mcheck sm${on ? " on" : ""}">${on ? "✓" : ""}</span><span class="mi-name">${esc(it[0])}<small>${esc(it[1])}${it[3] || it[2] || it[4] ? ` · P ${it[3]} · C ${it[2]} · F ${it[4]}` : " · supplement"}</small></span></button>`; }).join("")}</div>` : ""}</div>`;
+  }).join("");
+  return `<div class="card" id="mealsCard">${title("Today's meals", "flame", C.amber, `${t.kcalAte} / ${t.kcalPlan} kcal`)}
+    <div class="stack" style="gap:8px;margin-bottom:12px">${bar("Protein", t.ate[1], t.plan[1], C.mint)}${bar("Carbs", t.ate[0], t.plan[0], C.sky)}${bar("Fat", t.ate[2], t.plan[2], C.amber)}</div>
+    ${meals}<p class="note" style="margin-top:10px">Tick each item as you eat it, or the circle to tick a whole meal. Resets every day.</p></div>`;
+}
+function rerenderMeals() { const el = document.getElementById("mealsCard"); if (el) el.outerHTML = mealsCard(); }
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-meal]"); if (!t) return;
+  const k = dayKey(new Date()), a = t.dataset.meal;
+  if (a === "toggle") { const mi = +t.dataset.mi; MEAL_OPEN.has(mi) ? MEAL_OPEN.delete(mi) : MEAL_OPEN.add(mi); }
+  else if (a === "item") MEALS.set(k, d => { d[t.dataset.id] = !d[t.dataset.id]; if (!d[t.dataset.id]) delete d[t.dataset.id]; });
+  else if (a === "all") { const mi = +t.dataset.mi, ids = MEAL_PLAN[mi].items.map((_, ii) => mi + "." + ii);
+    MEALS.set(k, d => { const all = ids.every(x => d[x]); ids.forEach(x => all ? delete d[x] : d[x] = true); }); }
+  rerenderMeals();
+});
+function mealSummary() {
+  const days = Array.from({ length: 7 }, (_, i) => dayKey(Date.now() - i * DAY));
+  return { plan: MEAL_PLAN.map(m => ({ meal: m.name, items: m.items.map(([n, amt, c, p, f]) => `${n} ${amt} (P${p} C${c} F${f})`) })),
+    dailyPlanTotals: (() => { const t = mealTotals(days[0]); return { kcal: t.kcalPlan, proteinG: Math.round(t.plan[1]), carbsG: Math.round(t.plan[0]), fatG: Math.round(t.plan[2]) }; })(),
+    eaten: days.map(k => { const t = mealTotals(k); return { date: k, itemsTicked: `${t.done}/${t.total}`, kcal: t.kcalAte, proteinG: Math.round(t.ate[1]), carbsG: Math.round(t.ate[0]), fatG: Math.round(t.ate[2]),
+      missed: MEAL_PLAN.filter((m, mi) => !m.items.some((_, ii) => MEALS.day(k)[mi + "." + ii])).map(m => m.name) }; }).filter((x, i) => i === 0 || x.kcal > 0) };
+}
+
 /* ---------- every heart reading, hour by hour ---------- */
 function rawHeartSheet(hour) {
   const raw = S.data.heartRaw || []; if (!raw.length) return;
@@ -1999,6 +2077,7 @@ function healthSummary() {
     sicknessSignals: (() => { const c = sickCheck(); return { level: c.level, signals: c.signals.map(x => ({ [x.label]: x.text, flagged: x.on })) }; })(),
     weekReport: (() => { const w = weekReport(); return { overall: letter(w.overall), grades: w.rows.map(r => ({ [r.k]: letter(r.s), why: r.why })) }; })(),
     lifts: Object.fromEntries(Object.entries(liftHistory()).map(([ex, h]) => [ex, h.slice(-6).map(x => ({ date: day(x.date), topSet: `${x.top.kg}kg x ${x.top.reps}`, est1RM: Math.round(x.e1), volumeKg: Math.round(x.vol) }))])),
+    meals: mealSummary(),
     physio: { area: store.get("pulse.physioArea") || null, sessions: W.sessions().filter(s => s.sport === "Hydro physio").slice(0, 10).map(s => ({ date: day(new Date(s.start)), minutes: Math.round((s.end - s.start) / 60000), painBefore: s.painBefore ?? null, painAfter: s.painAfter ?? null })) },
     muscleReadiness: Object.fromEntries(Object.entries(muscleReadiness()).map(([m, r]) => [m, { readyPercent: Math.round(r.pct * 100), hoursToGo: Math.max(0, Math.round(r.left)), lastWorkedBy: r.sport }])),
     bedtimesLogged: BED.log().slice(0, 14).map(e => { const n = nightFor(e); return { date: day(new Date(e.end)), tappedBed: time(new Date(e.start)), gotUp: time(new Date(e.end)), fellAsleepMinutesAfterTap: asleepAfter(e, n), asleepMin: n ? Math.round(n.asleep) : null }; }),
@@ -2018,6 +2097,7 @@ How to work:
 - Fitbit Air has no ECG, GPS or stress sensor. Pulse Recovery and the sleep score are Pulse's own estimates. Totals for today are partial until the day ends.
 - Training advice is concrete: what to do today, how hard (easy, moderate, hard, or a heart-rate range), and for how long.
 - You are not a doctor and don't diagnose. If you see irregular-rhythm alerts, average SpO2 under 92%, resting heart rate 8+ bpm above baseline for 3+ days, or skin temperature 1 °C+ above baseline, say calmly that it's worth checking with a doctor, and why.
+- "meals" is their nutritionist's meal plan and what they ticked as eaten. Don't change the plan; use it to comment on protein and fuel around training (for example, eating the pre-workout snack before padel or climbing). Missed meals today may just not be ticked yet.
 - If the data source says DEMO DATA, mention once, briefly, that these are sample numbers.
 - Write like a good coach texting: warm, direct, short sentences, no filler. Use **bold** only for the key number or action. Use "- " for bullets and "## " for section headings. No tables.`;
 
@@ -2026,7 +2106,7 @@ First line: one punchy sentence on how my body is doing today (no heading).
 ## How you're doing
 2 to 4 sentences covering recovery (sleep, HRV, resting HR, Pulse Recovery %) and activity, with the key numbers vs my baseline.
 ## Today's plan
-3 bullets: training (what and how hard), recovery or sleep, and one small habit toward my goals.
+3 bullets: training (what and how hard), recovery or sleep, and food (meals left today or yesterday's protein vs plan).
 ## Watch
 Only if something genuinely needs attention: 1 or 2 bullets. Otherwise leave this section out.
 Keep it under 220 words.`;
