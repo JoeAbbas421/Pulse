@@ -702,7 +702,7 @@ function youScreen() {
         <b>${S.mode === "live" ? "Connected to Google Health" : "Showing demo data"}</b>
         ${S.mode === "live" && S.data.lastSync ? `<p class="note">Last sync ${S.data.lastSync.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</p>` : ""}
         ${canConnect ? `
-          <label class="field" for="clientId">Google OAuth client ID<input id="clientId" value="${esc(cid)}" placeholder="1234-abc.apps.googleusercontent.com" autocomplete="off" spellcheck="false"></label>
+          <label class="field" for="clientId">Google OAuth client ID<input id="clientId" value="${esc(cid)}" placeholder="1234-abc.apps.googleusercontent.com" autocomplete="off" spellcheck="false" autocapitalize="off" autocorrect="off"></label>
           <div class="btnrow">${S.mode === "live" ? `<button class="btn primary" id="syncNow">Sync now</button><button class="btn ghost" id="signOut">Sign out</button>` : `<button class="btn primary" id="connect">Connect Google Health</button>`}</div>`
         : `<p class="note">This preview runs on demo data. To see your own Fitbit Air data, open Pulse from its own web address (see the setup guide), where Google sign-in works.</p>`}
       </div></div>
@@ -793,7 +793,12 @@ function canUseGoogle() { return location.protocol === "https:" && !/claude\.ai|
 function redirectUri() { return location.origin + location.pathname; }
 function connect(silent) {
   const input = document.getElementById("clientId");
-  const cid = (input ? input.value.trim() : "") || store.get("pulse.clientId") || window.PULSE_CLIENT_ID || "";
+  const raw = (input ? input.value : "") || store.get("pulse.clientId") || window.PULSE_CLIENT_ID || "";
+  // Pull the real ID out of whatever got pasted (spaces, line breaks, quotes, "Client ID:" labels, invisible characters)
+  const m = raw.replace(/[\s\u200B-\u200D\uFEFF"'`]/g, "").match(/\d+-[a-z0-9]+\.apps\.googleusercontent\.com/i);
+  if (raw.trim() && !m) { S.error = /GOCSPX/i.test(raw) ? "That's the client secret, not the client ID. Copy the Client ID instead: it ends in .apps.googleusercontent.com." : "That doesn't look like a Google client ID. It should look like 123456789-abc123.apps.googleusercontent.com. Copy it again from Google Cloud → Clients."; S.data ? (S.tab = "you", render()) : (S.data = demo(), S.mode = "demo", S.tab = "you", render()); return; }
+  const cid = m ? m[0].toLowerCase() : "";
+  if (input) input.value = cid;
   if (!cid) { S.error = "Add your Google OAuth client ID first (You tab). The setup guide shows how to get one."; S.data ? (S.tab = "you", render()) : (S.data = demo(), S.mode = "demo", S.tab = "you", render()); return; }
   store.set("pulse.clientId", cid);
   const state = Math.random().toString(36).slice(2); store.set("pulse.state", state);
