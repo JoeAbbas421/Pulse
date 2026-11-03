@@ -1,24 +1,45 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
 <defs>
+  <style>@font-face{font-family:J;src:url(FONTURL)}</style>
   <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff8e6"/><stop offset=".5" stop-color="#f9edcc"/><stop offset="1" stop-color="#f0dba6"/></linearGradient>
   <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4a0712"/><stop offset=".55" stop-color="#120305"/><stop offset="1" stop-color="#2a0409"/></linearGradient>
-  <linearGradient id="hr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9e0f24"/><stop offset=".6" stop-color="#6e0718"/><stop offset="1" stop-color="#43030e"/></linearGradient>
-  <linearGradient id="hn" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#b3132a"/><stop offset="1" stop-color="#1a0205"/></linearGradient>
-  <linearGradient id="wg" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a0205"/><stop offset="1" stop-color="#000"/></linearGradient>
+  <radialGradient id="hr" cx=".38" cy=".3" r=".85"><stop offset="0" stop-color="#a8152c"/><stop offset=".55" stop-color="#6e0718"/><stop offset="1" stop-color="#3a020b"/></radialGradient>
+  <linearGradient id="hn" gradientUnits="userSpaceOnUse" x1="0" y1="200" x2="0" y2="126"><stop offset="0" stop-color="#140103"/><stop offset=".45" stop-color="#5c0614"/><stop offset=".85" stop-color="#a3172d"/><stop offset="1" stop-color="#d9586a"/></linearGradient>
+  <radialGradient id="mem" gradientUnits="userSpaceOnUse" cx="190" cy="240" r="100"><stop offset="0" stop-color="#3d0610"/><stop offset=".6" stop-color="#1c0306"/><stop offset="1" stop-color="#0a0102"/></radialGradient>
   <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
   <filter id="rglow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="7" result="b"/><feFlood flood-color="#b0102a" flood-opacity=".8"/><feComposite in2="b" operator="in" result="g"/><feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <filter id="sh"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity=".8"/></filter>
+  <!-- bat wing: arm bone to a wrist, four fingers, scalloped membrane between them -->
   <g id="wing">
-    <path d="M196 236 C170 206 142 186 112 180 C120 192 122 200 120 208 C108 206 100 210 96 216 C108 220 114 228 114 236 C104 238 98 246 98 254 C112 252 122 256 128 264 C122 270 120 278 122 284 C140 276 168 268 198 262 Z" fill="url(#wg)" stroke="#ff2e45" stroke-width="3.5" stroke-linejoin="round"/>
-    <path d="M190 240 C160 222 138 214 122 212 M188 248 C160 242 136 242 118 246 M190 256 C164 260 146 266 132 274" fill="none" stroke="#ff2e45" stroke-opacity=".55" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M194 226 L142 190 L102 168 Q122 194 94 212 Q116 226 106 252 Q128 252 138 272 Q160 256 196 260 Z" fill="url(#mem)" stroke="#ff2e45" stroke-opacity=".7" stroke-width="1.6" stroke-linejoin="round"/>
+    <path d="M142 190 Q132 208 118 211 M142 190 Q136 222 112 236 M142 190 Q148 230 128 258 M142 190 Q170 220 178 256" fill="none" stroke="#ff2e45" stroke-opacity=".18" stroke-width="1.2"/>
+    <g fill="none" stroke-linecap="round">
+      <path d="M194 226 Q168 204 142 190" stroke="#2a0307" stroke-width="7"/>
+      <path d="M142 190 Q120 176 102 168 M142 190 Q116 198 94 212 M142 190 Q122 222 106 252 M142 190 Q140 236 138 272" stroke="#2a0307" stroke-width="4.2"/>
+      <path d="M194 225 Q168 203 142 189 Q120 175 102 167 M142 189 Q116 197 94 211 M142 189 Q122 221 106 251 M142 189 Q140 235 138 271" stroke="#ff5a6e" stroke-opacity=".55" stroke-width="1.3"/>
+    </g>
+    <path d="M142 190 Q136 178 142 168 Q144 180 148 186 Z" fill="#e8d6c0" stroke="#2a0307" stroke-width="1.5"/>
+  </g>
+  <!-- horn: curved, tapered, ridged -->
+  <clipPath id="hc"><path id="hp" d="M196 206 C180 186 168 162 178 132 C180 152 194 174 226 196 Z"/></clipPath>
+  <g id="horn">
+    <use href="#hp" fill="url(#hn)"/>
+    <g clip-path="url(#hc)" fill="none" stroke="#0d0102" stroke-opacity=".55" stroke-width="2.2">
+      <path d="M182 190 Q200 186 214 200"/><path d="M178 180 Q194 176 206 192"/><path d="M175 170 Q190 166 200 182"/><path d="M174 160 Q186 157 194 171"/><path d="M174 150 Q184 148 189 160"/><path d="M175 141 Q182 140 185 150"/>
+    </g>
+    <path d="M197 204 C182 185 171 162 178 133" fill="none" stroke="#ff8a9a" stroke-opacity=".6" stroke-width="2" stroke-linecap="round"/>
+    <use href="#hp" fill="none" stroke="#0d0102" stroke-width="2.5" stroke-linejoin="round"/>
   </g>
 </defs>
 <rect width="512" height="512" fill="url(#bg)"/>
 <circle cx="256" cy="256" r="170" fill="none" stroke="url(#gold)" stroke-width="30" stroke-linecap="round" stroke-dasharray="830 238" transform="rotate(-90 256 256)" filter="url(#glow)" opacity=".97"/>
-<use href="#wing" transform="translate(196 240) scale(.86) translate(-196 -240)"/>
-<use href="#wing" transform="translate(512 0) scale(-1 1) translate(196 240) scale(.86) translate(-196 -240)"/>
-<path d="M198 206 C184 182 176 160 156 140 C194 150 216 170 224 196 Z" fill="url(#hn)" stroke="#ff2e45" stroke-width="3" stroke-linejoin="round"/>
-<path d="M314 206 C328 182 336 160 356 140 C318 150 296 170 288 196 Z" fill="url(#hn)" stroke="#ff2e45" stroke-width="3" stroke-linejoin="round"/>
+<g filter="url(#sh)">
+<use href="#wing" transform="translate(196 240) scale(.92) translate(-196 -240)"/>
+<use href="#wing" transform="translate(512 0) scale(-1 1) translate(196 240) scale(.92) translate(-196 -240)"/>
+<use href="#horn"/>
+<use href="#horn" transform="translate(512 0) scale(-1 1)"/>
+</g>
 <path d="M256 336 C200 296 180 260 180 234 C180 207 200 190 223 190 C239 190 250 199 256 213 C262 199 273 190 289 190 C312 190 332 207 332 234 C332 260 312 296 256 336 Z" fill="url(#hr)" stroke="#000" stroke-width="7" stroke-linejoin="round" filter="url(#rglow)"/>
-<path d="M206 214 C214 204 226 202 234 208" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width="6" stroke-linecap="round"/>
-<text x="256" y="268" text-anchor="middle" font-family="Inter Display, Inter, sans-serif" font-weight="900" font-size="54" letter-spacing="1" fill="#fff" stroke="#000" stroke-width="2" paint-order="stroke">Joe</text>
+<path d="M204 216 C212 204 225 201 234 207" fill="none" stroke="#fff" stroke-opacity=".25" stroke-width="6" stroke-linecap="round"/>
+<text x="252" y="TY" text-anchor="middle" font-family="J" font-size="FS" fill="url(#gold)" stroke="#1a0205" stroke-width="3" paint-order="stroke" filter="url(#sh)">Joe</text>
 </svg>
