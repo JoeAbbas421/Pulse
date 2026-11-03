@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
 <defs>
   <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4a0712"/><stop offset=".55" stop-color="#120305"/><stop offset="1" stop-color="#2a0409"/></linearGradient>
-  <linearGradient id="hr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff3a50"/><stop offset="1" stop-color="#9c1022"/></linearGradient>
+  <linearGradient id="hr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9e0f24"/><stop offset=".6" stop-color="#6e0718"/><stop offset="1" stop-color="#43030e"/></linearGradient>
   <linearGradient id="hn" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#b3132a"/><stop offset="1" stop-color="#1a0205"/></linearGradient>
   <linearGradient id="wg" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a0205"/><stop offset="1" stop-color="#000"/></linearGradient>
   <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-  <filter id="rglow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="7" result="b"/><feFlood flood-color="#ff2e45" flood-opacity=".7"/><feComposite in2="b" operator="in" result="g"/><feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <filter id="rglow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="7" result="b"/><feFlood flood-color="#b0102a" flood-opacity=".8"/><feComposite in2="b" operator="in" result="g"/><feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
   <g id="wing">
     <path d="M196 236 C170 206 142 186 112 180 C120 192 122 200 120 208 C108 206 100 210 96 216 C108 220 114 228 114 236 C104 238 98 246 98 254 C112 252 122 256 128 264 C122 270 120 278 122 284 C140 276 168 268 198 262 Z" fill="url(#wg)" stroke="#ff2e45" stroke-width="3.5" stroke-linejoin="round"/>
     <path d="M190 240 C160 222 138 214 122 212 M188 248 C160 242 136 242 118 246 M190 256 C164 260 146 266 132 274" fill="none" stroke="#ff2e45" stroke-opacity=".55" stroke-width="2.5" stroke-linecap="round"/>
@@ -18,5 +18,6 @@
 <path d="M198 206 C184 182 176 160 156 140 C194 150 216 170 224 196 Z" fill="url(#hn)" stroke="#ff2e45" stroke-width="3" stroke-linejoin="round"/>
 <path d="M314 206 C328 182 336 160 356 140 C318 150 296 170 288 196 Z" fill="url(#hn)" stroke="#ff2e45" stroke-width="3" stroke-linejoin="round"/>
 <path d="M256 336 C200 296 180 260 180 234 C180 207 200 190 223 190 C239 190 250 199 256 213 C262 199 273 190 289 190 C312 190 332 207 332 234 C332 260 312 296 256 336 Z" fill="url(#hr)" stroke="#000" stroke-width="7" stroke-linejoin="round" filter="url(#rglow)"/>
-<path d="M206 214 C214 204 226 202 234 208" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="6" stroke-linecap="round"/>
+<path d="M206 214 C214 204 226 202 234 208" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width="6" stroke-linecap="round"/>
+<text x="256" y="268" text-anchor="middle" font-family="Inter Display, Inter, sans-serif" font-weight="900" font-size="54" letter-spacing="1" fill="#fff" stroke="#000" stroke-width="2" paint-order="stroke">Joe</text>
 </svg>
