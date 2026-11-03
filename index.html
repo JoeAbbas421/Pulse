@@ -637,6 +637,7 @@ function todayScreen() {
     ${sickCard(false)}
     ${quickBlock()}
     ${mealsCard()}
+    ${suppCard()}
     ${batteryCard()}
     ${activityRings()}
     ${weekCard()}
@@ -1930,7 +1931,8 @@ charge = function () { const r = recovery(); return r ? r.score : baseCharge(); 
 // From Youssef's nutrition app screenshots (2026-11-03). Each item: [name, amount, carbs g, protein g, fat g]
 const MEAL_PLAN = [
   { name: "Breakfast", items: [["Whole eggs", "4 large", 1.4, 25.1, 19], ["Turkey meat", "100 g", 2, 29.3, 5], ["Brown toast", "4 slices", 61.6, 10.4, 4], ["Butter", "5 g", 0, 0, 4],
-    ["Green salad", "150 g", 10.5, 2.4, .6], ["Omega-3 (Kleansource)", "1 capsule", 0, 0, 0], ["Multivitamin (Kleansource)", "1 tablet", 0, 0, 0]] },
+    ["Green salad", "150 g", 10.5, 2.4, .6], ["Omega-3 (Kleansource)", "1 capsule", 0, 0, 0], ["Multivitamin (Kleansource)", "1 tablet", 0, 0, 0],
+    ["Vitamin D3 5000 IU (Kleansource)", "1 serving", 0, 0, 0], ["Vitamin K2 200 mcg (Kleansource)", "1 serving", 0, 0, 0]] },
   { name: "Pre-workout snack", items: [["Banana", "80 g", 18.4, .9, .2]] },
   { name: "Lunch", items: [["Lean meat", "250 g", 0, 65, 8.8], ["Cooked rice", "180 g", 46.8, 5.2, .7], ["Olive oil", "10 g", 0, 0, 10], ["Green salad", "200 g", 14, 3.2, .8], ["Zero treat sauce", "15 g", 1, 0, 0]] },
   { name: "Snack", items: [["Juhayna fat-free Greek yogurt", "180 g", 6.5, 14.9, .4], ["Peanut butter", "15 g", 3.4, 3.4, 7.5], ["Apple", "100 g", 14, .3, .2], ["Chia seeds", "3 g", 1.3, .5, .9],
@@ -1975,7 +1977,7 @@ document.addEventListener("click", e => {
   else if (a === "item") MEALS.set(k, d => { d[t.dataset.id] = !d[t.dataset.id]; if (!d[t.dataset.id]) delete d[t.dataset.id]; });
   else if (a === "all") { const mi = +t.dataset.mi, ids = MEAL_PLAN[mi].items.map((_, ii) => mi + "." + ii);
     MEALS.set(k, d => { const all = ids.every(x => d[x]); ids.forEach(x => all ? delete d[x] : d[x] = true); }); }
-  rerenderMeals();
+  rerenderMeals(); const sc = document.getElementById("suppCard"); if (sc) sc.outerHTML = suppCard();
 });
 function mealSummary() {
   const days = Array.from({ length: 7 }, (_, i) => dayKey(Date.now() - i * DAY));
@@ -1983,6 +1985,155 @@ function mealSummary() {
     dailyPlanTotals: (() => { const t = mealTotals(days[0]); return { kcal: t.kcalPlan, proteinG: Math.round(t.plan[1]), carbsG: Math.round(t.plan[0]), fatG: Math.round(t.plan[2]) }; })(),
     eaten: days.map(k => { const t = mealTotals(k); return { date: k, itemsTicked: `${t.done}/${t.total}`, kcal: t.kcalAte, proteinG: Math.round(t.ate[1]), carbsG: Math.round(t.ate[0]), fatG: Math.round(t.ate[2]),
       missed: MEAL_PLAN.filter((m, mi) => !m.items.some((_, ii) => MEALS.day(k)[mi + "." + ii])).map(m => m.name) }; }).filter((x, i) => i === 0 || x.kcal > 0) };
+}
+
+/* ---------- supplements: tick what you took, see what research says each one does, and what your own Fitbit Air data shows ---------- */
+// ev: evidence strength for the effect most relevant to him. watch: which of his Pulse numbers could move. meal: the meal-plan item that is the same pill.
+const SUPPS = [
+  { key: "magnesium", when: "Evening, 1 to 2 hours before bed", slot: 4, name: "Magnesium", meal: "3.4", ev: "Moderate", watch: ["deep", "efficiency", "latency", "hrv"],
+    what: "Needed for muscle contraction and relaxation, nerve signalling and energy. Athletes lose some in sweat.",
+    research: "Most trials find a small improvement in sleep quality and time to fall asleep, mainly in people who were low in magnesium. One trial in older adults saw more deep (slow-wave) sleep. Effects in well-fed young athletes are small.",
+    expect: "If it helps you, look for falling asleep a little faster and slightly more deep sleep after 2 to 4 weeks.",
+    tip: "Take it in the evening, 1 to 2 hours before bed. Keep it 2 hours away from zinc and calcium, which compete for absorption. Loose stools mean the dose is too high.",
+    src: ["https://pmc.ncbi.nlm.nih.gov/articles/PMC11136869/", "Systematic review of magnesium for sleep and anxiety (2024)"] },
+  { key: "zinc", when: "With lunch", slot: 2, name: "Zinc", meal: "3.5", ev: "Moderate", watch: ["sick", "rhr"],
+    what: "Supports your immune system, wound and tissue repair, and testosterone production. Lost in sweat during hard training.",
+    research: "Zinc taken within 24 hours of the first cold symptoms shortens colds. Daily zinc does not clearly stop you catching one. No reliable effect on sleep or HRV.",
+    expect: "Not something your Air will show day to day. If anything, fewer or shorter sick-warning episodes over months.",
+    tip: "Take it with food (it can cause nausea on an empty stomach), away from calcium and magnesium. Don't go above 40 mg a day in total for long periods: it lowers copper.",
+    src: ["https://lpi.oregonstate.edu/mic/minerals/zinc", "Linus Pauling Institute: zinc"] },
+  { key: "calcium", when: "With your afternoon snack (the yogurt)", slot: 3, name: "Calcium", ev: "Strong for bones only", watch: [],
+    what: "Builds bones and teeth and is needed for every muscle contraction. Your Greek yogurt already gives you some.",
+    research: "Protects bone density, especially with enough vitamin D. No measurable effect on sleep, HRV or recovery scores.",
+    expect: "No change in your Pulse numbers. Its benefit is long-term bone strength, which matters for padel, football and climbing impacts.",
+    tip: "Take at most 500 mg at a time, with food. Keep it 2 hours away from zinc, magnesium and iron.",
+    src: ["https://lpi.oregonstate.edu/mic/minerals/calcium", "Linus Pauling Institute: calcium"] },
+  { key: "multi", when: "With breakfast", slot: 1, name: "Multivitamin", meal: "0.6", ev: "Weak", watch: [],
+    what: "A safety net that covers small gaps in vitamins and minerals.",
+    research: "In people who already eat well, multivitamins don't measurably improve performance, sleep or recovery. They help if your diet has real gaps.",
+    expect: "No visible change in your Pulse numbers. Your meal plan already covers most needs.",
+    tip: "Take it with breakfast. Check its label: it may already contain zinc, vitamin D or calcium, which adds to your other pills.",
+    src: ["https://ods.od.nih.gov/factsheets/MVMS-HealthProfessional/", "NIH: multivitamin/mineral supplements"] },
+  { key: "ashwagandha", when: "Evening, with dinner or before bed", slot: 4, name: "Ashwagandha", ev: "Moderate", watch: ["latency", "efficiency", "rhr", "hrv"],
+    what: "A herb (adaptogen) used to lower stress. It appears to reduce cortisol, your main stress hormone.",
+    research: "A meta-analysis of 5 trials (400 people) found a small but real improvement in sleep. One trial saw better sleep efficiency, more total sleep and faster sleep onset after 6 weeks. Some trials report small gains in strength and VO2 max.",
+    expect: "The clearest thing to look for is falling asleep faster and better sleep efficiency after about 6 weeks. Possibly a slightly lower resting heart rate.",
+    tip: "Many people take it in the evening. It's usually used in 8 to 12 week blocks. Avoid it with thyroid problems or liver issues, and stop if you notice yellowing skin or dark urine (rare liver injury has been reported).",
+    src: ["https://pubmed.ncbi.nlm.nih.gov/34559859/", "Meta-analysis: ashwagandha and sleep (2021)"] },
+  { key: "moringa", when: "With breakfast", slot: 1, name: "Moringa", ev: "Weak", watch: [],
+    what: "A leaf powder rich in vitamins, minerals and antioxidants.",
+    research: "Human studies are small and mostly about blood sugar and antioxidant levels. There's no good evidence it changes sleep, HRV or recovery.",
+    expect: "Don't expect a visible change in your Pulse numbers. Pulse will still compare your data with and without it.",
+    tip: "Take it with food. It can lower blood sugar and blood pressure a little, so be careful if you take medicine for either.",
+    src: ["https://lpi.oregonstate.edu/mic/dietary-factors/phytochemicals", "Linus Pauling Institute: phytochemicals"] },
+  { key: "omega3", when: "With breakfast", slot: 1, name: "Omega-3", meal: "0.5", ev: "Moderate to strong", watch: ["rhr", "hrv"],
+    what: "Fish-oil fats (EPA and DHA) that calm inflammation and support your heart and brain.",
+    research: "Meta-analyses of trials find omega-3 lowers resting heart rate by about 2 beats per minute and improves HRV. Some studies show less muscle soreness after hard sessions.",
+    expect: "Omega-3 builds up slowly. Look for a slightly lower resting heart rate and higher HRV after 4 to 8 weeks of taking it every day.",
+    tip: "Take it with a meal that has fat (your breakfast is good) for better absorption. It works through daily use, so missing a day doesn't matter much.",
+    src: ["https://pubmed.ncbi.nlm.nih.gov/29284786/", "Meta-analysis: omega-3 and heart rate (2018)"] },
+  { key: "d3", when: "With breakfast", slot: 1, name: "Vitamin D3 (5000 IU)", meal: "0.7", ev: "Strong if you're low", watch: ["sick"],
+    what: "Helps you absorb calcium for strong bones, and supports muscles and the immune system.",
+    research: "It clearly helps people who are low in vitamin D. If your level is already normal, large trials show little extra benefit. Effects on sleep are mixed.",
+    expect: "No day-to-day change in your Pulse numbers. Possibly fewer infections over a winter if you were low.",
+    tip: "Take it with a meal that has fat. Note: 5000 IU is above the standard safe upper limit of 4000 IU a day for adults. That's fine if your doctor prescribed it, but get a blood test (25-OH vitamin D) to check your level.",
+    src: ["https://ods.od.nih.gov/factsheets/VitaminD-HealthProfessional/", "NIH: vitamin D"] },
+  { key: "k2", when: "With breakfast", slot: 1, name: "Vitamin K2 (200 mcg)", meal: "0.8", ev: "Limited", watch: [],
+    what: "Works with vitamin D to direct calcium into bones rather than arteries. Often paired with high-dose D3.",
+    research: "Some evidence for bone health. No effect on sleep, HRV or recovery.",
+    expect: "No change in your Pulse numbers.",
+    tip: "Take it with your D3 and a meal that has fat. If you're ever prescribed a blood thinner like warfarin, tell your doctor you take it.",
+    src: ["https://lpi.oregonstate.edu/mic/vitamins/vitamin-K", "Linus Pauling Institute: vitamin K"] },
+];
+const SUPP_METRICS = {
+  deep: { label: "Deep sleep", unit: "min", up: true, get: k => { const n = nightFor0(k + DAY); return n && n.stages.length ? n.minutes(["deep"]) : null; } },
+  efficiency: { label: "Sleep efficiency", unit: "%", up: true, get: k => { const n = nightFor0(k + DAY); return n ? n.asleep / Math.max(n.inBed, 1) * 100 : null; } },
+  latency: { label: "Time to fall asleep", unit: "min", up: false, get: k => { const n = nightFor0(k + DAY); return n && n.toFallAsleep != null ? n.toFallAsleep : null; } },
+  hrv: { label: "HRV next morning", unit: "ms", up: true, get: k => valOn("hrv", k + DAY) },
+  rhr: { label: "Resting HR next morning", unit: "bpm", up: false, get: k => valOn("restingHeartRate", k + DAY) },
+  recovery: { label: "Recovery next morning", unit: "%", up: true, get: k => { const r = recoveryAt(k + DAY); return r ? r.score : null; } },
+  sick: { label: "Illness signs", unit: "", up: false, get: () => null },
+};
+const SUPPLOG = {
+  log() { try { return JSON.parse(store.get("pulse.suppLog")) || {}; } catch { return {}; } },
+  mine() { try { return JSON.parse(store.get("pulse.mySupps")) || SUPPS.map(s => s.key); } catch { return SUPPS.map(s => s.key); } },
+};
+function suppTaken(dk, key) {
+  const s = SUPPS.find(x => x.key === key); if (!s) return false;
+  return !!(SUPPLOG.log()[dk] || {})[key] || !!(s.meal && MEALS.day(dk)[s.meal]);
+}
+function toggleSupp(key) {
+  const dk = dayKey(new Date()), s = SUPPS.find(x => x.key === key), on = suppTaken(dk, key);
+  if (s.meal && MEALS.day(dk)[s.meal]) MEALS.set(dk, d => { delete d[s.meal]; });
+  const l = SUPPLOG.log(), d = l[dk] || {};
+  if (on) delete d[key]; else d[key] = true;
+  l[dk] = d; const keep = Object.keys(l).sort().slice(-90);
+  store.set("pulse.suppLog", JSON.stringify(Object.fromEntries(keep.map(x => [x, l[x]]))));
+}
+/* Your own data: compare the night and morning after days you took it with days you didn't. Needs at least 5 of each. */
+function suppEffect(key) {
+  const t0 = startOfDay(new Date()).getTime(), days = Array.from({ length: 29 }, (_, i) => t0 - (i + 1) * DAY);
+  const on = days.filter(d => suppTaken(dayKey(d), key)), off = days.filter(d => !suppTaken(dayKey(d), key));
+  const s = SUPPS.find(x => x.key === key), metrics = [...new Set([...s.watch.filter(m => m !== "sick"), "recovery"])];
+  const rows = metrics.map(m => {
+    const M = SUPP_METRICS[m], a = on.map(M.get).filter(v => v != null), b = off.map(M.get).filter(v => v != null);
+    if (a.length < 5 || b.length < 5) return { m, label: M.label, need: Math.max(0, 5 - a.length) + Math.max(0, 5 - b.length), a: a.length, b: b.length };
+    const ma = median(a), mb = median(b), diff = ma - mb, spread = sd([...a, ...b]) || 1, z = diff / (spread * Math.sqrt(1 / a.length + 1 / b.length));
+    const good = M.up ? diff > 0 : diff < 0;
+    return { m, label: M.label, unit: M.unit, with: ma, without: mb, diff, sure: Math.abs(z) >= 2 ? "clear" : Math.abs(z) >= 1 ? "possible" : "none", good, a: a.length, b: b.length };
+  });
+  return { rows, on: on.length, off: off.length };
+}
+const fmtM = (v, u) => u === "%" ? Math.round(v) + "%" : u === "ms" || u === "bpm" || u === "min" ? Math.round(v) + " " + u : Math.round(v);
+const SUPP_SLOTS = ["", "Morning, with breakfast", "Lunch", "Afternoon snack", "Evening, before bed"];
+function suppSchedule(list, dk) {
+  const rows = [1, 2, 3, 4].map(sl => { const xs = list.filter(s => s.slot === sl); return xs.length ? `<div class="bar-row" style="grid-template-columns:118px 1fr;align-items:start"><span>${SUPP_SLOTS[sl]}</span><span style="font-size:14px">${xs.map(s => `${suppTaken(dk, s.key) ? "✓ " : ""}${esc(s.name.replace(/ \(.*\)/, ""))}`).join(", ")}</span></div>` : ""; }).join("");
+  return rows ? `<p class="mlabel">Best time to take them</p><div class="stack" style="gap:6px">${rows}</div><p class="note" style="margin-top:8px">Zinc, calcium and magnesium compete for absorption, so they're spread out. Your plan has magnesium and zinc together in the snack: moving zinc to lunch and magnesium to the evening helps both work better.</p>` : "";
+}
+function suppCard() {
+  const dk = dayKey(new Date()), mine = SUPPLOG.mine(), list = SUPPS.filter(s => mine.includes(s.key)), n = list.filter(s => suppTaken(dk, s.key)).length;
+  return `<div class="card" id="suppCard">${title("Supplements", "drop", C.violet, `${n} / ${list.length} today`)}
+    <div class="quick">${list.map(s => { const on = suppTaken(dk, s.key); return `<button class="qchip${on ? " on" : ""}" data-supp="tick" data-k="${s.key}" aria-pressed="${on}">${on ? "✓ " : ""}${esc(s.name.replace(/ \(.*\)/, ""))}</button>`; }).join("")}</div>
+    ${suppSchedule(list, dk)}
+    <button class="btn ghost" data-supp="open" style="width:100%;margin-top:12px">${icon("info")} What they do to your body</button></div>`;
+}
+function suppSheet(openKey) {
+  const mine = SUPPLOG.mine();
+  const evCol = e => /strong/i.test(e) ? C.mint : /moderate/i.test(e) ? C.sky : C.amber;
+  const body = SUPPS.filter(s => mine.includes(s.key)).map(s => {
+    const ef = suppEffect(s.key), rows = ef.rows.map(r => r.need != null
+      ? `<li>${r.label}: needs ${r.need} more day${r.need > 1 ? "s" : ""} of data (${r.a} with, ${r.b} without so far)</li>`
+      : `<li><b>${r.label}:</b> ${fmtM(r.with, r.unit)} with vs ${fmtM(r.without, r.unit)} without. ${r.sure === "none" ? "No real difference yet." : `<span style="color:${r.good ? C.mint : C.amber}">${r.sure === "clear" ? "Clear" : "Possible"} ${r.good ? "improvement" : "worse"}</span>${r.sure === "possible" ? ", but it could still be chance." : "."}`}</li>`).join("");
+    const daily = ef.off < 5 && ef.on >= 20;
+    return `<div class="card" id="supp-${s.key}" style="text-align:left">${title(esc(s.name), "drop", evCol(s.ev), `evidence: ${esc(s.ev.toLowerCase())}`)}
+      <p style="margin:0 0 8px">${s.what}</p>
+      <p class="mlabel">What research shows</p><p style="margin:0">${s.research}</p>
+      <p class="mlabel">What you might see in Pulse</p><p style="margin:0">${s.expect}</p>
+      <p class="mlabel">Your data so far</p>${daily ? `<p class="note" style="margin:0">You take it every day, so there are no days without it to compare. That's fine: Pulse watches your trend instead${s.watch.includes("rhr") || s.watch.includes("hrv") ? " (resting heart rate and HRV on the Heart tab)" : ""}.</p>` : `<ul class="mlist">${rows}</ul>`}
+      <p class="mlabel">Best time</p><p style="margin:0"><b>${esc(s.when)}.</b></p>
+      <p class="mlabel">How to take it</p><p style="margin:0">${s.tip}</p>
+      <p class="note" style="margin-top:8px">Source: <a href="${s.src[0]}" target="_blank" rel="noopener" style="color:var(--mint)">${esc(s.src[1])}</a></p></div>`;
+  }).join("");
+  openSheet(`<div class="stack" style="margin-top:10px"><div><div class="eyebrow">Supplements</div><h1>What they do to you</h1></div>
+    <div class="card"><p style="margin:0">Pulse compares the night and morning after days you took each supplement with days you didn't, using your own Fitbit Air data. It needs at least 5 days of each before it shows a result, and it tells you when a difference could just be chance.</p>
+    <p class="note" style="margin-top:8px">Supplements usually have small effects that take weeks to show. Sleep, training and food move your numbers far more. This is information, not medical advice.</p></div>
+    ${body}
+    <div class="card"><p class="mlabel" style="margin-top:0">Which ones do you take?</p><div class="quick">${SUPPS.map(s => `<button class="qchip${mine.includes(s.key) ? " on" : ""}" data-supp="mine" data-k="${s.key}" aria-pressed="${mine.includes(s.key)}">${esc(s.name)}</button>`).join("")}</div></div>
+    <button class="btn primary" data-supp="ask">${icon("claude")} Ask Claude about my supplements</button></div>`);
+  if (openKey) document.getElementById("supp-" + openKey)?.scrollIntoView();
+}
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-supp]"); if (!t) return;
+  const a = t.dataset.supp;
+  if (a === "tick") { toggleSupp(t.dataset.k); document.getElementById("suppCard").outerHTML = suppCard(); rerenderMeals(); }
+  else if (a === "open") suppSheet();
+  else if (a === "mine") { const m = SUPPLOG.mine(), k = t.dataset.k; store.set("pulse.mySupps", JSON.stringify(m.includes(k) ? m.filter(x => x !== k) : [...m, k])); suppSheet(); const c = document.getElementById("suppCard"); if (c) c.outerHTML = suppCard(); }
+  else if (a === "ask") { closeSheet(); sendChat("Look at my supplements, how consistently I take them, and what my own sleep, HRV, resting heart rate and recovery data shows with and without each. What's worth keeping, what timing should I change, and is anything worth checking with a doctor?"); }
+});
+function suppSummary() {
+  const mine = SUPPLOG.mine(), last14 = Array.from({ length: 14 }, (_, i) => dayKey(Date.now() - i * DAY));
+  return SUPPS.filter(s => mine.includes(s.key)).map(s => ({ name: s.name, evidence: s.ev, takenLast14Days: last14.filter(k => suppTaken(k, s.key)).length, takenToday: suppTaken(last14[0], s.key), bestTime: s.when,
+    myData: suppEffect(s.key).rows.map(r => r.need != null ? { metric: r.label, status: `needs ${r.need} more days` } : { metric: r.label, withIt: Math.round(r.with), withoutIt: Math.round(r.without), difference: r.sure }) }));
 }
 
 /* ---------- every heart reading, hour by hour ---------- */
@@ -2109,6 +2260,7 @@ function healthSummary() {
     weekReport: (() => { const w = weekReport(); return { overall: letter(w.overall), grades: w.rows.map(r => ({ [r.k]: letter(r.s), why: r.why })) }; })(),
     lifts: Object.fromEntries(Object.entries(liftHistory()).map(([ex, h]) => [ex, h.slice(-6).map(x => ({ date: day(x.date), topSet: `${x.top.kg}kg x ${x.top.reps}`, est1RM: Math.round(x.e1), volumeKg: Math.round(x.vol) }))])),
     meals: mealSummary(),
+    supplements: suppSummary(),
     recoveryHistory: (() => { const t0 = startOfDay(new Date()).getTime(); return Array.from({ length: 14 }, (_, i) => t0 - (13 - i) * DAY).map(d => { const r = recoveryAt(d), y = dayContext(d - DAY); return { date: day(new Date(d)), recoveryPercent: r ? r.score : null, dayBefore: { training: y.ses, zoneMinutes: y.zm == null ? null : Math.round(y.zm), strain: y.strain, food: y.food } }; }); })(),
     physio: { area: store.get("pulse.physioArea") || null, sessions: W.sessions().filter(s => s.sport === "Hydro physio").slice(0, 10).map(s => ({ date: day(new Date(s.start)), minutes: Math.round((s.end - s.start) / 60000), painBefore: s.painBefore ?? null, painAfter: s.painAfter ?? null })) },
     muscleReadiness: Object.fromEntries(Object.entries(muscleReadiness()).map(([m, r]) => [m, { readyPercent: Math.round(r.pct * 100), hoursToGo: Math.max(0, Math.round(r.left)), lastWorkedBy: r.sport }])),
@@ -2131,6 +2283,7 @@ How to work:
 - You are not a doctor and don't diagnose. If you see irregular-rhythm alerts, average SpO2 under 92%, resting heart rate 8+ bpm above baseline for 3+ days, or skin temperature 1 °C+ above baseline, say calmly that it's worth checking with a doctor, and why.
 - "recoveryHistory" links each morning's recovery to the day before: training (sessions, strain) and food (protein and calories vs plan). Use it to explain today's score and to spot patterns, like recovery dropping after hard days with low protein. Only call something a pattern with at least 3 matching days; otherwise say it's early.
 - "meals" is their nutritionist's meal plan and what they ticked as eaten. Don't change the plan; use it to comment on protein and fuel around training (for example, eating the pre-workout snack before padel or climbing). Missed meals today may just not be ticked yet.
+- "supplements" lists what they take, how often they ticked it in the last 14 days, and their own data with vs without each one. Supplement effects are usually small and slow: only call an effect real when "difference" is "clear", say "possible" ones could be chance, and never invent effects the data doesn't show. Their vitamin D3 is 5000 IU a day, above the standard 4000 IU adult upper limit: suggest a 25-OH vitamin D blood test and checking the dose with a doctor if it comes up. Not medical advice; refer anything medical to a doctor.
 - If the data source says DEMO DATA, mention once, briefly, that these are sample numbers.
 - Write like a good coach texting: warm, direct, short sentences, no filler. Use **bold** only for the key number or action. Use "- " for bullets and "## " for section headings. No tables.`;
 
