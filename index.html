@@ -1572,7 +1572,7 @@ openSession = async function (id, refresh) {
     extra += setLogger(s.id) + exs.map(ex => { const a = liftAdvice(ex, hist); return a ? `<div class="card status" style="padding:12px 14px"><span class="badge" style="width:36px;height:36px;background:${C[a.tone]}22">${icon("lift", C[a.tone])}</span><div><strong style="font-size:14px">${esc(ex)}</strong><p>${a.text}</p></div></div>` : ""; }).join("");
   }
   if (s.sport === PHYSIO) extra += physioBlock(s.id, false);
-  extra = musclesWorkedCard(s) + extra;
+  extra = musclesWorkedCard(s) + refuelCard(s) + extra;
   if (!extra) return;
   const anchor = root.querySelector('[data-c="debrief"]');
   anchor ? anchor.insertAdjacentHTML("beforebegin", extra) : root.insertAdjacentHTML("beforeend", extra);
@@ -1823,10 +1823,16 @@ function recoveryAt(t0) {
   const st = valOn("skinTemp", t0), br = valOn("breathingRate", t0), bb = median(before("breathingRate", t0));
   const flags = [st != null && st >= .5 ? `skin temp +${st.toFixed(1)} °C` : "", br != null && bb && br - bb >= 1.5 ? `breathing +${(br - bb).toFixed(1)}/min` : ""].filter(Boolean);
   if (st != null || br != null) add("ill", "Illness signs", flags.length ? 25 : 100, flags.length ? .25 : .05, flags.length ? flags.join(", ") : "Skin temp and breathing normal");
+  // 7. Fuel: yesterday's meals vs your plan. Only counts if you ticked meals that day, so an untracked day is left out, not punished.
+  const yt = mealTotals(dayKey(t0 - DAY));
+  if (yt.done) {
+    const pr = yt.ate[1] / Math.max(yt.plan[1], 1), kr = yt.kcalAte / Math.max(yt.kcalPlan, 1);
+    add("fuel", "Yesterday's food", Math.min(pr, 1) * 60 + Math.max(0, 40 - Math.abs(1 - kr) * 50), .1, `${Math.round(yt.ate[1])} of ${Math.round(yt.plan[1])} g protein, ${yt.kcalAte} of ${yt.kcalPlan} kcal`);
+  }
   if (parts.length < 2) return null;
   const w = parts.reduce((a, p) => a + p.weight, 0);
   const score = Math.round(parts.reduce((a, p) => a + p.score * p.weight, 0) / w);
-  return { score, parts, have: parts.length, of: 6 };
+  return { score, parts, have: parts.length, of: 7 };
 }
 
 function recovery() {
@@ -1876,6 +1882,7 @@ function recoverySheet() {
     <div><div class="eyebrow">Recovery · today</div><h1>${r.score}% ${z.label.toLowerCase()}</h1></div>
     <div class="card hero"><div class="ringwrap" style="width:124px;height:124px">${ring(r.score / 100, [z.col, C.violet], 124, 14)}<div class="center"><div><div class="big" style="font-size:34px">${r.score}</div><div class="sub">RECOVERY</div></div></div></div>
       <div class="hero-copy"><strong>${z.plan}</strong><p>${r.avg7 != null ? `Your 7-day average is ${r.avg7}%. ` : ""}${r.hoursToFull ? `Fully recovered in about ${full} h.` : r.musclesLeft > 1 ? `Your body is recovered. Muscles you trained still need up to ${Math.round(r.musclesLeft)} h, so pick a sport that uses others.` : "Nothing left to recover."}</p></div></div>
+    ${behindCard()}
     <div class="card">${title("Today's training", "bolt", z.col)}<p style="margin:0"><b>${z.load}</b>. ${z.hr}.</p>
       <div class="stack" style="gap:8px;margin-top:10px">${r.sports.map(s => `<div style="display:flex;gap:10px;align-items:flex-start"><span style="flex:none;width:22px;height:22px;display:grid">${icon(sportIcon(s.sp), s.ok && r.score >= 40 ? C.mint : C.amber)}</span><div><b style="font-size:14px">${s.sp === "Weightlifting" ? "Lifting" : s.sp}</b>
         <span class="note" style="display:block;font-size:12px">${r.score < 40 ? "Rest first" : s.ok ? "Muscles ready" : `Go easy on ${s.low.map(x => `${x.m.toLowerCase()} (${Math.round(x.pct * 100)}%)`).join(", ")}`}</span></div></div>`).join("")}</div></div>
@@ -1890,6 +1897,30 @@ document.addEventListener("click", e => {
   if (t.dataset.rec === "open") recoverySheet();
   else { const r = recovery(); closeSheet(); sendChat(`My recovery is ${r ? r.score + "%" : "unknown"} today. ${r ? r.parts.map(p => `${p.label}: ${p.score} (${p.detail}).`).join(" ") : ""} What should I do today and tonight to recover faster, given my sports?`); }
 });
+
+/* Yesterday's training and food, shown next to today's recovery so you can see what moved it. */
+function dayContext(t0) {
+  const ses = W.sessions().filter(s => s.end >= t0 && s.end < t0 + DAY), mt = mealTotals(dayKey(t0));
+  return { ses: ses.map(s => ({ sport: s.sport, min: Math.round((s.end - s.start) / 60000), load: Math.round(sessionLoad(s)) })), zm: valOn("zoneMinutes", t0), strain: Math.round(dayStrain(t0)),
+    food: mt.done ? { protein: Math.round(mt.ate[1]), proteinPlan: Math.round(mt.plan[1]), kcal: mt.kcalAte, kcalPlan: mt.kcalPlan, ticked: mt.done, of: mt.total } : null };
+}
+function behindCard() {
+  const t0 = startOfDay(new Date()).getTime(), y = dayContext(t0 - DAY);
+  const train = y.ses.length ? y.ses.map(s => `${s.sport} ${s.min} min (load ${s.load}, ${loadLabel(s.load).toLowerCase()})`).join(", ") : y.zm ? `No logged session, ${Math.round(y.zm)} zone minutes` : "Rest day";
+  const food = y.food ? `${y.food.protein} of ${y.food.proteinPlan} g protein, ${y.food.kcal} of ${y.food.kcalPlan} kcal` : "Not tracked. Tick your meals so Pulse can count food in your recovery";
+  const tip = y.food && y.food.protein < y.food.proteinPlan * .8 && y.strain >= 60 ? "Hard training with low protein slows muscle repair. Hit your protein today." : y.food && y.food.kcal < y.food.kcalPlan * .75 && y.strain >= 60 ? "You trained hard on too little food. Don't skip meals today." : !y.food ? "" : y.food.protein >= y.food.proteinPlan * .9 ? "Good fuelling. That helps today's score." : "";
+  return `<div class="card">${title("What's behind it", "info", C.violet, "yesterday")}
+    <div class="stack" style="gap:8px"><div style="display:flex;gap:10px"><span style="flex:none;width:22px;height:22px;display:grid">${icon("bolt", C.mint)}</span><div><b style="font-size:14px">Training</b><span class="note" style="display:block;font-size:12.5px">${esc(train)}</span></div></div>
+    <div style="display:flex;gap:10px"><span style="flex:none;width:22px;height:22px;display:grid">${icon("flame", C.amber)}</span><div><b style="font-size:14px">Food</b><span class="note" style="display:block;font-size:12.5px">${esc(food)}</span></div></div></div>
+    ${tip ? `<p style="margin:10px 0 0;font-size:14px"><b>${tip}</b></p>` : ""}</div>`;
+}
+function refuelCard(s) {
+  if (Date.now() - s.end > 3 * 3600000) return "";
+  const k = dayKey(new Date()), d = MEALS.day(k), next = MEAL_PLAN.map((m, mi) => ({ m, mi })).find(({ m, mi }) => !m.items.some((_, ii) => d[mi + "." + ii]));
+  const p = next ? Math.round(next.m.items.reduce((a, it) => a + it[3], 0)) : 0;
+  return `<div class="card status"><span class="badge" style="background:rgba(255,138,61,.16)">${icon("flame", C.amber)}</span><div><strong>Refuel</strong>
+    <p>${next ? `Your next planned meal is <b>${esc(next.m.name)}</b> (${p} g protein). Eat it within about 2 hours to help your muscles recover, then tick it on Today.` : "You've eaten all your planned meals today. Drink water and get to bed on time."}</p></div></div>`;
+}
 
 /* Charge now uses the full recovery model, so Today, body battery and Claude all see the same number. */
 const baseCharge = charge;
@@ -2078,6 +2109,7 @@ function healthSummary() {
     weekReport: (() => { const w = weekReport(); return { overall: letter(w.overall), grades: w.rows.map(r => ({ [r.k]: letter(r.s), why: r.why })) }; })(),
     lifts: Object.fromEntries(Object.entries(liftHistory()).map(([ex, h]) => [ex, h.slice(-6).map(x => ({ date: day(x.date), topSet: `${x.top.kg}kg x ${x.top.reps}`, est1RM: Math.round(x.e1), volumeKg: Math.round(x.vol) }))])),
     meals: mealSummary(),
+    recoveryHistory: (() => { const t0 = startOfDay(new Date()).getTime(); return Array.from({ length: 14 }, (_, i) => t0 - (13 - i) * DAY).map(d => { const r = recoveryAt(d), y = dayContext(d - DAY); return { date: day(new Date(d)), recoveryPercent: r ? r.score : null, dayBefore: { training: y.ses, zoneMinutes: y.zm == null ? null : Math.round(y.zm), strain: y.strain, food: y.food } }; }); })(),
     physio: { area: store.get("pulse.physioArea") || null, sessions: W.sessions().filter(s => s.sport === "Hydro physio").slice(0, 10).map(s => ({ date: day(new Date(s.start)), minutes: Math.round((s.end - s.start) / 60000), painBefore: s.painBefore ?? null, painAfter: s.painAfter ?? null })) },
     muscleReadiness: Object.fromEntries(Object.entries(muscleReadiness()).map(([m, r]) => [m, { readyPercent: Math.round(r.pct * 100), hoursToGo: Math.max(0, Math.round(r.left)), lastWorkedBy: r.sport }])),
     bedtimesLogged: BED.log().slice(0, 14).map(e => { const n = nightFor(e); return { date: day(new Date(e.end)), tappedBed: time(new Date(e.start)), gotUp: time(new Date(e.end)), fellAsleepMinutesAfterTap: asleepAfter(e, n), asleepMin: n ? Math.round(n.asleep) : null }; }),
@@ -2097,6 +2129,7 @@ How to work:
 - Fitbit Air has no ECG, GPS or stress sensor. Pulse Recovery and the sleep score are Pulse's own estimates. Totals for today are partial until the day ends.
 - Training advice is concrete: what to do today, how hard (easy, moderate, hard, or a heart-rate range), and for how long.
 - You are not a doctor and don't diagnose. If you see irregular-rhythm alerts, average SpO2 under 92%, resting heart rate 8+ bpm above baseline for 3+ days, or skin temperature 1 °C+ above baseline, say calmly that it's worth checking with a doctor, and why.
+- "recoveryHistory" links each morning's recovery to the day before: training (sessions, strain) and food (protein and calories vs plan). Use it to explain today's score and to spot patterns, like recovery dropping after hard days with low protein. Only call something a pattern with at least 3 matching days; otherwise say it's early.
 - "meals" is their nutritionist's meal plan and what they ticked as eaten. Don't change the plan; use it to comment on protein and fuel around training (for example, eating the pre-workout snack before padel or climbing). Missed meals today may just not be ticked yet.
 - If the data source says DEMO DATA, mention once, briefly, that these are sample numbers.
 - Write like a good coach texting: warm, direct, short sentences, no filler. Use **bold** only for the key number or action. Use "- " for bullets and "## " for section headings. No tables.`;
