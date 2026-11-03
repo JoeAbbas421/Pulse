@@ -641,6 +641,7 @@ function todayScreen() {
     ${checkupCard(true)}
     ${sickCard(false)}
     ${quickBlock()}
+    ${bioCard()}
     ${mealsCard()}
     ${suppCard()}
     ${screenCard()}
@@ -903,6 +904,8 @@ const EXTRACT = {
   vo2Max: p => inRange(num(p.vo2Max), 10, 100),                                            // DailyVO2Max.vo2Max
 };
 /* Extra context shown on detail screens, straight from the same records. */
+// zone minutes split: fat burn = moderate, cardio + peak = vigorous (for biological age)
+const PARTS = { zoneMinutes: p => { const f = k => num(p[k]) || 0; return { fat: f("sumInFatBurnHeartZone"), cardio: f("sumInCardioHeartZone"), peak: f("sumInPeakHeartZone") }; } };
 const EXTRA = {
   spo2: p => { const lo = num(p.lowerBoundPercentage), hi = num(p.upperBoundPercentage); return lo != null && hi != null ? `Overnight range ${lo.toFixed(1)}–${hi.toFixed(1)}%` : null; },
   skinTemp: p => { const n = num(p.nightlyTemperatureCelsius), b = num(p.baselineTemperatureCelsius); return n != null && b != null ? `Nightly ${n.toFixed(2)} °C vs your baseline ${b.toFixed(2)} °C` : null; },
@@ -916,7 +919,7 @@ function toDays(points, m, stats) {
     const pl = p[m.fetch[2]]; if (!pl) { stats.skipped++; continue; }
     const v = EXTRACT[m.id](pl), d = when(p, pl); if (v == null || !d) { stats.skipped++; continue; }
     const k = startOfDay(d).getTime();
-    if (!by.has(k)) by.set(k, { date: new Date(k), value: v, note: EXTRA[m.id]?.(pl) || null, source: p.dataSource?.device?.displayName || null });
+    if (!by.has(k)) by.set(k, { date: new Date(k), value: v, note: EXTRA[m.id]?.(pl) || null, source: p.dataSource?.device?.displayName || null, ...(PARTS[m.id] ? { parts: PARTS[m.id](pl) } : {}) });
   }
   return [...by.values()].sort((a, b) => a.date - b.date);
 }
@@ -2377,6 +2380,164 @@ function inbodySummary() {
     scans: IB.list().map(({ id, src, ...s }) => s) };
 }
 
+/* ---------- biological age: 9 everyday markers that large studies tie to how long people live, turned into years older or younger than your real age ---------- */
+// Method: each marker's link to all-cause mortality (hazard ratio, HR) comes from a big published study. Risk of dying roughly doubles every 8 years of adult age,
+// so a hazard ratio converts to years as 8 × log2(HR) = 11.5 × ln(HR). Observational studies overstate cause and effect, so every effect is halved (SHRINK),
+// each marker is capped at ±4 years and the total at ±12. It's an estimate to track trends, not a medical test.
+const SHRINK = .5, Y = lnHR => 11.5 * lnHR * SHRINK;
+const interp = (x, pts) => { if (x <= pts[0][0]) return pts[0][1]; for (let i = 1; i < pts.length; i++) if (x <= pts[i][0]) { const [a, va] = pts[i - 1], [b, vb] = pts[i]; return va + (vb - va) * (x - a) / (b - a); } return pts[pts.length - 1][1]; };
+const capY = (v, c = 4) => Math.max(-c, Math.min(c, v));
+const fmtY = y => `${y > 0 ? "+" : y < 0 ? "−" : "±"}${Math.abs(Math.round(y * 10) / 10)} yr`;
+const sdMin = v => v.length < 4 ? null : Math.sqrt(v.reduce((a, x) => a + (x - v.reduce((p, q) => p + q, 0) / v.length) ** 2, 0) / v.length);
+const minOfDay = d => { const x = new Date(d); let m = x.getHours() * 60 + x.getMinutes(); return m < 720 ? m + 1440 : m; }; // bedtimes after midnight count as late, not early
+function bioInputs(endT) {
+  const end = endT ?? Date.now(), from = d => end - d * DAY;
+  const inWin = (s, d) => s.filter(p => +p.date >= from(d) && +p.date < end);
+  const avgOf = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  const nights = mainNights().filter(n => +n.end > from(14) && +n.end <= end + 12 * 3600000);
+  const n7 = nights.filter(n => +n.end > from(7));
+  const zm = inWin(fullSeries("zoneMinutes"), 28), weeks = Math.max(zm.length / 7, 1);
+  let mod = null, vig = null, split = "measured";
+  if (zm.length >= 7) {
+    if (zm.some(p => p.parts)) { mod = zm.reduce((a, p) => a + (p.parts ? p.parts.fat : 0), 0) / weeks; vig = zm.reduce((a, p) => a + (p.parts ? p.parts.cardio + p.parts.peak : 0), 0) / weeks; }
+    else { const t = zm.reduce((a, p) => a + p.value, 0) / weeks; mod = t * 2 / 3; vig = t / 3; split = "estimated"; }
+  }
+  const lift = /weight|strength|lift|climb/i;
+  const pulseStr = W.sessions().filter(s => s.end > from(28) && s.end <= end && lift.test(s.sport)).reduce((a, s) => a + (s.end - s.start) / 60000, 0);
+  const airStr = (S.data?.workouts || []).filter(w => +w.end > from(28) && +w.end <= end && lift.test(w.type) && !W.sessions().some(s => Math.abs(s.start - w.start) < 30 * 60000)).reduce((a, w) => a + (w.end - w.start) / 60000, 0);
+  const steps = inWin(fullSeries("steps"), 14).filter(p => p.value > 500);
+  const vo2 = fullSeries("vo2Max").filter(p => +p.date <= end).slice(-1)[0];
+  const rhr = inWin(fullSeries("restingHeartRate"), 14).map(p => p.value), hrv = inWin(fullSeries("hrv"), 14).map(p => p.value);
+  return {
+    sleepHours: n7.length >= 4 ? avgOf(n7.map(n => n.asleep)) / 60 : null,
+    sleepConsistency: nights.length >= 7 ? avgOf([sdMin(nights.map(n => minOfDay(n.start))), sdMin(nights.map(n => minOfDay(n.end) % 1440))]) : null,
+    moderate: mod, vigorous: vig, zoneSplit: split,
+    strength: zm.length >= 7 || pulseStr + airStr > 0 ? (pulseStr + airStr) / 4 : null,
+    steps: steps.length >= 7 ? avgOf(steps.map(p => p.value)) : null,
+    vo2: vo2 && end - vo2.date < 45 * DAY ? vo2.value : null,
+    rhr: rhr.length >= 5 ? median(rhr) : null,
+    hrv: hrv.length >= 5 ? median(hrv) : null,
+  };
+}
+const BIO_FACTORS = [
+  { key: "vo2", name: "Cardio fitness (VO₂ max)", unit: "", fmt: v => v.toFixed(1), cat: "Fitness",
+    years: (v, age, male) => { const exp = (male ? 47 : 39) * Math.exp(-.0095 * Math.max(age - 25, 0)); return capY(Y(Math.log(.87)) * (v - exp) / 3.5, 4); },
+    target: (age, male) => Math.round((male ? 47 : 39) * Math.exp(-.0095 * Math.max(age - 25, 0)) * 1.15),
+    fix: "The strongest single marker. Add 1 to 2 interval sessions a week: 4 × 4 minutes hard (cardio/peak zone) with 3 minutes easy between. Padel and football count when they push you into the cardio zone.",
+    src: ["Kodama 2009, JAMA: each 1 MET (3.5 VO₂) higher fitness, 13% lower risk of death", "https://pubmed.ncbi.nlm.nih.gov/19454641/"] },
+  { key: "rhr", name: "Resting heart rate", unit: "bpm", fmt: v => Math.round(v), cat: "Heart",
+    years: v => capY(Y(Math.log(1.09)) * (v - 62) / 10, 3), target: () => 55,
+    fix: "Comes down with aerobic fitness, good sleep, less alcohol and staying hydrated. Easy zone 2 cardio (fat burn zone) 2 to 3 times a week lowers it over weeks.",
+    src: ["Zhang 2016, CMAJ: every 10 bpm higher resting HR, 9% higher risk of death", "https://pubmed.ncbi.nlm.nih.gov/26598376/"] },
+  { key: "hrv", name: "HRV (overnight)", unit: "ms", fmt: v => Math.round(v), cat: "Heart",
+    years: (v, age) => { const exp = 60 * Math.exp(-.023 * Math.max(age - 25, 0)); return capY(Y(-.4 * Math.log(Math.max(v, 5) / exp)), 3); },
+    target: age => Math.round(60 * Math.exp(-.023 * Math.max(age - 25, 0)) * 1.1),
+    fix: "Rises with consistent sleep, aerobic fitness, lower stress and less alcohol, and drops when you overtrain or get sick. Follow your recovery score: hard days when recovered, easy days when not.",
+    src: ["Hillebrand 2013, Europace: lower HRV, higher risk of a first heart attack or stroke", "https://pubmed.ncbi.nlm.nih.gov/23370966/"] },
+  { key: "sleepHours", name: "Hours of sleep", unit: "h", fmt: v => v.toFixed(1), cat: "Sleep",
+    years: v => capY(v < 6 ? Y(Math.log(1.12)) * 1.4 : v < 7 ? Y(Math.log(1.12)) * (7 - v) : v <= 9 ? 0 : Y(Math.log(1.3)) * Math.min(v - 9, 1), 2), target: () => 7.5,
+    fix: "Aim for 7 to 9 hours asleep. Work back from your wake time, use the Bed button, and keep your phone away from bed (your screen time card shows how much it costs you).",
+    src: ["Cappuccio 2010, Sleep: short sleep 12% higher risk of death", "https://pubmed.ncbi.nlm.nih.gov/20469800/"] },
+  { key: "sleepConsistency", name: "Sleep consistency", unit: "min spread", fmt: v => Math.round(v), cat: "Sleep",
+    years: v => capY(Y(interp(v, [[20, -.05], [30, 0], [60, Math.log(1.15)], [90, Math.log(1.3)], [150, Math.log(1.5)]])), 2), target: () => 30,
+    fix: "Go to bed and wake up within about 30 minutes of the same times every day, weekends included. Wake time matters most.",
+    src: ["Windred 2024, Sleep: irregular sleepers had 20 to 48% higher risk of death than regular ones", "https://pubmed.ncbi.nlm.nih.gov/37738616/"] },
+  { key: "moderate", name: "Moderate cardio (fat burn zone)", unit: "min/week", fmt: v => Math.round(v), cat: "Fitness",
+    years: v => capY(Y(interp(v, [[0, 0], [75, -.1], [150, -.21], [300, -.27], [600, -.3]]) - -.1), 2.5), target: () => 150,
+    fix: "150 to 300 minutes a week in your fat burn zone. Walking fast, easy cycling, swimming and longer padel rallies all count.",
+    src: ["Lee 2022, Circulation: 150 to 300 min/week moderate activity, about 20% lower risk of death", "https://pubmed.ncbi.nlm.nih.gov/35876019/"] },
+  { key: "vigorous", name: "Hard cardio (cardio and peak zones)", unit: "min/week", fmt: v => Math.round(v), cat: "Fitness",
+    years: v => capY(Y(interp(v, [[0, 0], [37, -.1], [75, -.21], [150, -.27], [300, -.28]]) - interp(20, [[0, 0], [37, -.1]])), 2.5), target: () => 75,
+    fix: "75 to 150 minutes a week in your cardio and peak zones. Football, hard padel games and intervals all count.",
+    src: ["Lee 2022, Circulation: 75 to 150 min/week vigorous activity, about 20% lower risk of death", "https://pubmed.ncbi.nlm.nih.gov/35876019/"] },
+  { key: "strength", name: "Strength training", unit: "min/week", fmt: v => Math.round(v), cat: "Fitness",
+    years: v => capY(Y(interp(v, [[0, 0], [30, -.12], [60, -.19], [130, -.15], [200, -.05]])), 2), target: () => 60,
+    fix: "30 to 60 minutes a week of lifting gives most of the benefit. Two lift or climbing sessions a week covers it, and more isn't extra protection.",
+    src: ["Momma 2022, British Journal of Sports Medicine: 30 to 60 min/week of strength training, 10 to 20% lower risk of death", "https://pubmed.ncbi.nlm.nih.gov/35228201/"] },
+  { key: "steps", name: "Daily steps", unit: "steps", fmt: v => Math.round(v).toLocaleString(), cat: "Fitness",
+    years: v => { const f = s => interp(s, [[3500, 0], [5800, Math.log(.6)], [7800, Math.log(.55)], [10900, Math.log(.47)], [14000, Math.log(.45)]]); return capY(Y(f(v) - f(7000)), 3); }, target: () => 9000,
+    fix: "Aim for 8,000 to 10,000 steps a day. Walk after meals and take calls on foot. Rest days count too.",
+    src: ["Paluch 2022, Lancet Public Health: 8,000 to 10,000 steps a day, the lowest risk of death for adults under 60", "https://pubmed.ncbi.nlm.nih.gov/35247352/"] },
+];
+function bioAge(endT) {
+  const p = W.profile(), age = +p.age; if (!(age >= 14 && age <= 100)) return { needAge: true };
+  const male = p.sex !== "female", inp = bioInputs(endT);
+  const rows = BIO_FACTORS.map(f => { const v = inp[f.key]; if (v == null) return { ...f, value: null };
+    const y = f.years(v, age, male), tgt = f.target(age, male), atTarget = f.years(f.key === "sleepHours" ? tgt : f.key === "rhr" || f.key === "sleepConsistency" ? Math.min(v, tgt) : Math.max(v, tgt), age, male);
+    return { ...f, value: v, years: y, targetVal: tgt, gain: Math.max(0, y - atTarget) }; });
+  const have = rows.filter(r => r.value != null); if (have.length < 4) return { age, missing: rows.filter(r => r.value == null).map(r => r.name), have: have.length };
+  const delta = Math.max(-12, Math.min(12, have.reduce((a, r) => a + r.years, 0)));
+  return { age, bio: age + delta, delta, rows, zoneSplit: inp.zoneSplit, missing: rows.filter(r => r.value == null).map(r => r.name) };
+}
+const BIOLOG = { get() { try { return JSON.parse(store.get("pulse.bioAgeLog")) || {}; } catch { return {}; } } };
+function logBioAge(b) {
+  if (!b || b.bio == null || S.mode !== "live") return; // never mix demo numbers into your history
+  const l = BIOLOG.get(), k = dayKey(new Date());
+  l[k] = { bio: Math.round(b.bio * 10) / 10, age: b.age, f: Object.fromEntries(b.rows.filter(r => r.value != null).map(r => [r.key, Math.round(r.years * 100) / 100])) };
+  const ks = Object.keys(l).sort().slice(-400); store.set("pulse.bioAgeLog", JSON.stringify(Object.fromEntries(ks.map(x => [x, l[x]]))));
+}
+/* Pace of aging: how fast your biological age moves per real year, from the slope of your log (1.0× = normal, below 1 = slowing down). Needs 3+ weeks. */
+function bioPace() {
+  const l = BIOLOG.get(), ks = Object.keys(l).sort().filter(k => Date.now() - new Date(k) < 120 * DAY); if (ks.length < 14) return { need: 14 - ks.length };
+  const xs = ks.map(k => (new Date(k) - new Date(ks[0])) / DAY), ys = ks.map(k => l[k].bio - l[k].age);
+  if (xs[xs.length - 1] < 21) return { need: Math.ceil(21 - xs[xs.length - 1]), days: true };
+  const mx = xs.reduce((a, b) => a + b) / xs.length, my = ys.reduce((a, b) => a + b) / ys.length;
+  const slope = xs.reduce((a, x, i) => a + (x - mx) * (ys[i] - my), 0) / xs.reduce((a, x) => a + (x - mx) ** 2, 0);
+  const prev = ks.filter(k => new Date(ks[ks.length - 1]) - new Date(k) >= 28 * DAY).slice(-1)[0];
+  // daily estimates wobble, so the yearly pace only means something over 3+ months; before that show the 4-week change
+  const span = xs[xs.length - 1], last = l[ks[ks.length - 1]];
+  return { pace: span >= 90 ? Math.max(-1, Math.min(3, 1 + slope * 365)) : null, paceIn: Math.ceil(90 - span), change4w: prev ? Math.round((last.bio - last.age - (l[prev].bio - l[prev].age)) * 10) / 10 : null,
+    since: prev ? { date: prev, bio: l[prev].bio, f: l[prev].f } : null, series: ks.map(k => ({ value: l[k].bio })) };
+}
+function bioTrendLine(pc) {
+  if (pc.need) return `Pulse tracks whether you're getting younger or older once it has ${pc.need} more days of your history.`;
+  const ch = pc.change4w == null ? "" : Math.abs(pc.change4w) < .2 ? "About the same as 4 weeks ago. " : `<b style="color:${pc.change4w < 0 ? C.mint : C.amber}">${pc.change4w < 0 ? "Getting younger" : "Getting older"}: ${fmtY(pc.change4w)}</b> in 4 weeks. `;
+  return ch + (pc.pace != null ? `Pace of aging <b>${pc.pace.toFixed(1)}×</b> (1.0× is normal; below is slower).` : `Pace of aging (per real year) shows in ${pc.paceIn} days.`);
+}
+function bioCard() {
+  const b = bioAge();
+  if (b.needAge) return `<div class="card" id="bioCard">${title("Biological age", "spark", C.violet)}<p style="margin:0">Add your age (and sex) in the You tab, and Pulse will estimate your biological age from 9 markers: sleep, heart, fitness and activity.</p><button class="btn ghost" data-tab="you" style="width:100%;margin-top:12px">Add my age</button></div>`;
+  if (b.bio == null) return `<div class="card" id="bioCard">${title("Biological age", "spark", C.violet)}<p style="margin:0">Pulse needs at least 4 of the 9 markers to estimate it, and has ${b.have} so far. Keep wearing your Air, especially at night. Still missing: ${b.missing.join(", ")}.</p></div>`;
+  logBioAge(b);
+  const pc = bioPace(), younger = b.delta < 0, top = b.rows.filter(r => r.gain > .05).sort((x, y) => y.gain - x.gain).slice(0, 2);
+  return `<button class="card" id="bioCard" data-bio="open" style="text-align:left;color:var(--fg);cursor:pointer;width:100%">${title("Biological age", "spark", C.violet, "tap for details")}
+    <div style="display:flex;align-items:flex-end;gap:14px"><div style="font:800 52px/1 var(--display,var(--body));color:${younger ? C.mint : C.amber}">${b.bio.toFixed(1)}</div>
+      <div style="padding-bottom:6px"><b>${Math.abs(b.delta) < .3 ? "Same as your real age" : `${Math.abs(b.delta).toFixed(1)} years ${younger ? "younger" : "older"}`}</b><div class="note">than your real age of ${b.age}</div></div></div>
+    <p class="note" style="margin:10px 0 0">${bioTrendLine(pc)}</p>
+    ${top.length ? `<p class="mlabel">Biggest wins</p><ul class="mlist">${top.map(r => `<li>${r.name}: up to ${r.gain.toFixed(1)} years back</li>`).join("")}</ul>` : ""}</button>`;
+}
+function bioSheet() {
+  const b = bioAge(); if (b.bio == null) return;
+  const pc = bioPace(), cats = ["Fitness", "Heart", "Sleep"];
+  const row = r => r.value == null ? `<div class="bar-row" style="grid-template-columns:1fr auto"><span>${r.name}</span><span class="t">no data yet</span></div>`
+    : `<div style="padding:10px 0;border-top:1px solid var(--line)"><div style="display:flex;justify-content:space-between;gap:8px"><b>${r.name}</b><b style="color:${r.years < 0 ? C.mint : r.years > .05 ? C.amber : "var(--muted)"};white-space:nowrap">${fmtY(r.years)}</b></div>
+      <div class="note">You: ${r.fmt(r.value)} ${r.unit} · target ${r.fmt(r.targetVal)} ${r.unit}${pc.since && pc.since.f[r.key] != null ? ` · 4 weeks ago ${fmtY(pc.since.f[r.key])}` : ""}</div>
+      ${r.gain > .05 ? `<p style="margin:6px 0 0;font-size:14px"><b>Fix (up to ${r.gain.toFixed(1)} years back):</b> ${r.fix}</p>` : ""}
+      <p class="note" style="margin:4px 0 0"><a href="${r.src[1]}" target="_blank" rel="noopener" style="color:var(--mint)">${esc(r.src[0])}</a></p></div>`;
+  openSheet(`<div class="stack" style="margin-top:10px"><div><div class="eyebrow">Biological age</div><h1>${b.bio.toFixed(1)} years</h1></div>
+    <div class="card"><p style="margin:0">Your real age is ${b.age}. Your markers put you <b>${Math.abs(b.delta).toFixed(1)} years ${b.delta < 0 ? "younger" : "older"}</b>.
+      ${pc.since ? ` Four weeks ago you were ${pc.since.bio.toFixed(1)}.` : ""}</p><p class="note" style="margin:8px 0 0">${bioTrendLine(pc)}</p>
+      ${pc.series && pc.series.length > 1 ? `<div style="margin-top:10px">${spark(pc.series, C.violet)}</div>` : ""}</div>
+    ${cats.map(c => `<div class="card">${title(c, c === "Sleep" ? "moon" : c === "Heart" ? "heart" : "run", C.mint)}${b.rows.filter(r => r.cat === c).map(row).join("")}</div>`).join("")}
+    <div class="card"><p class="mlabel" style="margin-top:0">How Pulse works it out</p>
+      <p style="margin:0;font-size:14px">Each marker is compared with large studies that tracked how long people lived. A higher risk of death converts to extra years, because in adults that risk roughly doubles every 8 years of age. Pulse halves every effect, because these studies show links rather than proof, and caps each marker at 4 years.${b.zoneSplit === "estimated" ? " Your fat-burn vs cardio/peak split is estimated, because Google didn't send the split." : ""}</p>
+      <p class="note" style="margin-top:8px">This is an estimate for tracking your trend, not a medical test. Body composition from your InBody and blood tests aren't included yet.</p></div>
+    <button class="btn primary" data-bio="ask">${icon("claude")} Ask Claude how to get younger</button></div>`);
+}
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-bio]"); if (!t) return;
+  if (t.dataset.bio === "open") bioSheet();
+  else if (t.dataset.bio === "ask") { closeSheet(); sendChat("Look at my biological age in bioAge: which markers are adding years, which are taking years off, and how my pace of aging is trending. Give me a 4-week plan that fits my padel, football, lifting, climbing and physio, ordered by how many years each change could take back."); }
+});
+function bioSummary() {
+  const b = bioAge(); if (b.bio == null) return b.needAge ? { status: "age not set" } : { status: "not enough data", missing: b.missing };
+  const pc = bioPace();
+  return { note: "Pulse's own estimate: 9 markers, hazard ratios from published cohorts converted to years (11.5 × ln HR), halved for confounding, capped ±4 per marker. Positive years = older.",
+    realAge: b.age, biologicalAge: Math.round(b.bio * 10) / 10, changeLast4WeeksYears: pc.change4w ?? null, paceOfAging: pc.pace != null ? Math.round(pc.pace * 100) / 100 : "not enough history yet (needs ~3 months)",
+    fourWeeksAgo: pc.since ? pc.since.bio : null,
+    markers: b.rows.map(r => r.value == null ? { marker: r.name, value: null } : { marker: r.name, value: Math.round(r.value * 10) / 10, unit: r.unit, years: Math.round(r.years * 10) / 10, target: r.targetVal, yearsBackAtTarget: Math.round(r.gain * 10) / 10 }) };
+}
+
 /* ---------- every heart reading, hour by hour ---------- */
 function rawHeartSheet(hour) {
   const raw = S.data.heartRaw || []; if (!raw.length) return;
@@ -2504,6 +2665,7 @@ function healthSummary() {
     supplements: suppSummary(),
     screenTime: screenSummary(),
     bodyComposition: inbodySummary(),
+    bioAge: bioSummary(),
     recoveryHistory: (() => { const t0 = startOfDay(new Date()).getTime(); return Array.from({ length: 14 }, (_, i) => t0 - (13 - i) * DAY).map(d => { const r = recoveryAt(d), y = dayContext(d - DAY); return { date: day(new Date(d)), recoveryPercent: r ? r.score : null, dayBefore: { training: y.ses, zoneMinutes: y.zm == null ? null : Math.round(y.zm), strain: y.strain, food: y.food } }; }); })(),
     physio: { area: store.get("pulse.physioArea") || null, sessions: W.sessions().filter(s => s.sport === "Hydro physio").slice(0, 10).map(s => ({ date: day(new Date(s.start)), minutes: Math.round((s.end - s.start) / 60000), painBefore: s.painBefore ?? null, painAfter: s.painAfter ?? null })) },
     muscleReadiness: Object.fromEntries(Object.entries(muscleReadiness()).map(([m, r]) => [m, { readyPercent: Math.round(r.pct * 100), hoursToGo: Math.max(0, Math.round(r.left)), lastWorkedBy: r.sport }])),
@@ -2529,6 +2691,7 @@ How to work:
 - "supplements" lists what they take, how often they ticked it in the last 14 days, and their own data with vs without each one. Supplement effects are usually small and slow: only call an effect real when "difference" is "clear", say "possible" ones could be chance, and never invent effects the data doesn't show. Their vitamin D3 is 5000 IU a day, above the standard 4000 IU adult upper limit: suggest a 25-OH vitamin D blood test and checking the dose with a doctor if it comes up. Not medical advice; refer anything medical to a doctor.
 - "screenTime" is phone use they timed or typed from iPhone Screen Time, with minutes in the 2 hours before sleep, and their own sleep/HRV/recovery on heavy vs light days. Days without entries are missing, not zero. Only call an effect real when "difference" is "clear".
 - "bodyComposition" holds their InBody scans (weight, skeletal muscle mass, body fat mass and %, visceral fat, etc.). Their goal is losing fat and getting leaner while keeping muscle. Judge progress on fat mass and muscle mass, not weight alone; a sustainable fat loss rate is roughly 0.5 to 1% of body weight a week; treat changes under ~0.5 kg between two scans as possible noise from hydration and food; compare scans taken under the same conditions.
+- "bioAge" is Pulse's own biological age estimate from 9 markers (VO2 max, resting HR, HRV, sleep hours, sleep consistency, moderate and vigorous zone minutes, strength minutes, steps). Positive "years" add age. Explain which markers cost the most and what fixes them, using "yearsBackAtTarget". Present it as an estimate for tracking trends, not a medical result; don't claim it is WHOOP's algorithm.
 - If the data source says DEMO DATA, mention once, briefly, that these are sample numbers.
 - Write like a good coach texting: warm, direct, short sentences, no filler. Use **bold** only for the key number or action. Use "- " for bullets and "## " for section headings. No tables.`;
 
