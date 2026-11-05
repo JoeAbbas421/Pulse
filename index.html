@@ -2972,6 +2972,15 @@ document.addEventListener("change", e => { if (e.target.id === "coachGoals") sto
 sampleChannel().then(ch => { if (ch && S.data) render(); });
 
 /* ---------- boot ---------- */
+/* Youssef's first InBody scan (Vital Gym, 22 Sep 2026), read from the photo he sent, so Pulse starts with his baseline */
+(() => { try {
+  if (store.get("pulse.inbodySeeded")) return;
+  const seed = { id: "seed-2026-09-22", date: "2026-09-22", src: "claude", weight: 114.6, smm: 44.7, fatMass: 37.4, pbf: 32.6, visceral: 17, tbw: 56.5, ffm: 77.2, bmi: 36.6, bmr: 2038, whr: 1.01, score: 74 };
+  const l = IB.list(); if (!l.some(x => x.id === seed.id || x.date === seed.date)) IB.save([...l, seed]);
+  const p = W.profile(); store.set("pulse.profile", JSON.stringify({ ...p, age: p.age || "24", sex: p.sex || "male", weight: p.weight || "114.6" }));
+  store.set("pulse.inbodySeeded", "1");
+} catch {} })();
+
 try { navigator.storage?.persist?.(); } catch {}
 S.tab = store.get("pulse.tab") || "today";
 if (canUseGoogle()) readRedirect();
