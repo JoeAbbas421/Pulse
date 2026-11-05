@@ -203,7 +203,7 @@ textarea.goals { width: 100%; border-radius: 16px; resize: vertical; font-size: 
 .iconbtn[disabled], .askbar input[disabled] { opacity: .5; }
 a.btn { text-decoration: none; display: inline-block; }
 @media (prefers-reduced-motion: reduce) { .thinking { animation: none; } }
-.quickrow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.quickrow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .meal { border-top: 1px solid var(--line); padding: 10px 0 4px; }
 .mealhead { display: flex; align-items: center; gap: 10px; }
 .mcheck { flex: none; width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--line); background: none; color: #fff; font: 800 15px var(--body); display: grid; place-items: center; cursor: pointer; padding: 0; }
@@ -1302,8 +1302,8 @@ const BED = {
 Object.assign(P, { sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>' });
 
 function quickRow() {
-  const b = [["bed", "Bed", "moon", "Sleep"], ["Padel", "Padel", "racket", "Start"], ["Weightlifting", "Lift", "lift", "Start"], ["Rock climbing", "Climb", "climb", "Start"], ["Hydro physio", "Physio", "swim", "Start"]];
-  return `<div class="quickrow">${b.map(([k, l, ic, s]) => `<button class="qbtn" data-q1="${k}">${icon(ic)}<b>${l}</b><span>${s}</span></button>`).join("")}</div>`;
+  const b = [["bed", "Bed", "moon", "Sleep"], ["Padel", "Padel", "racket", "Start"], ["Weightlifting", "Lift", "lift", "Start"], ["Rock climbing", "Climb", "climb", "Start"], ["Hydro physio", "Physio", "swim", "Start"], ["nap", "Nap", "sun", "Start"]];
+  return `<div class="quickrow">${b.map(([k, l, ic, s]) => `<button class="qbtn" ${k === "nap" ? `data-nap="start"` : `data-q1="${k}"`}>${icon(ic)}<b>${l}</b><span>${s}</span></button>`).join("")}</div>`;
 }
 function bedCard() {
   const b = BED.active();
@@ -1311,7 +1311,7 @@ function bedCard() {
     <div style="flex:1;min-width:0"><strong>Good night</strong><p>In bed since ${time(new Date(b.start))} · <span data-bedclock>${fmtDur((Date.now() - b.start) / 60000)}</span></p></div>
     <button class="btn primary" data-q1="up" style="flex:none">${icon("sun")} I'm up</button></div>${typeof bedStretches === "function" ? bedStretches() : ""}`;
 }
-function quickBlock() { return W.active() ? workoutCard() : BED.active() ? bedCard() : quickRow(); }
+function quickBlock() { return W.active() ? workoutCard() : BED.active() ? bedCard() : NAP.active() ? napCard() : quickRow(); }
 
 /* Match a tapped bedtime to the night your Air recorded. */
 function nightFor(e) {
@@ -2384,7 +2384,7 @@ function inbodySummary() {
 // Method: each marker's link to all-cause mortality (hazard ratio, HR) comes from a big published study. Risk of dying roughly doubles every 8 years of adult age,
 // so a hazard ratio converts to years as 8 × log2(HR) = 11.5 × ln(HR). Observational studies overstate cause and effect, so every effect is halved (SHRINK),
 // each marker is capped at ±4 years and the total at ±12. It's an estimate to track trends, not a medical test.
-const SHRINK = .5, Y = lnHR => 11.5 * lnHR * SHRINK;
+const SHRINK = .65, Y = lnHR => 11.5 * lnHR * SHRINK;
 const interp = (x, pts) => { if (x <= pts[0][0]) return pts[0][1]; for (let i = 1; i < pts.length; i++) if (x <= pts[i][0]) { const [a, va] = pts[i - 1], [b, vb] = pts[i]; return va + (vb - va) * (x - a) / (b - a); } return pts[pts.length - 1][1]; };
 const capY = (v, c = 4) => Math.max(-c, Math.min(c, v));
 const fmtY = y => `${y > 0 ? "+" : y < 0 ? "−" : "±"}${Math.abs(Math.round(y * 10) / 10)} yr`;
@@ -2466,8 +2466,9 @@ function bioAge(endT) {
     const y = f.years(v, age, male), tgt = f.target(age, male), atTarget = f.years(f.key === "sleepHours" ? tgt : f.key === "rhr" || f.key === "sleepConsistency" ? Math.min(v, tgt) : Math.max(v, tgt), age, male);
     return { ...f, value: v, years: y, targetVal: tgt, gain: Math.max(0, y - atTarget) }; });
   const have = rows.filter(r => r.value != null); if (have.length < 4) return { age, missing: rows.filter(r => r.value == null).map(r => r.name), have: have.length };
-  const delta = Math.max(-12, Math.min(12, have.reduce((a, r) => a + r.years, 0)));
-  return { age, bio: age + delta, delta, rows, zoneSplit: inp.zoneSplit, missing: rows.filter(r => r.value == null).map(r => r.name) };
+  const life = lifeRows(male), all = [...rows, ...life], counted = all.filter(r => r.value != null);
+  const delta = Math.max(-15, Math.min(15, counted.reduce((a, r) => a + r.years, 0)));
+  return { age, bio: age + delta, delta, rows: all, counted: counted.length, lifeMissing: !LIFE.get().smoke, zoneSplit: inp.zoneSplit, missing: rows.filter(r => r.value == null).map(r => r.name) };
 }
 const BIOLOG = { get() { try { return JSON.parse(store.get("pulse.bioAgeLog")) || {}; } catch { return {}; } } };
 function logBioAge(b) {
@@ -2504,24 +2505,26 @@ function bioCard() {
     <div style="display:flex;align-items:flex-end;gap:14px"><div style="font:800 52px/1 var(--display,var(--body));color:${younger ? C.mint : C.amber}">${b.bio.toFixed(1)}</div>
       <div style="padding-bottom:6px"><b>${Math.abs(b.delta) < .3 ? "Same as your real age" : `${Math.abs(b.delta).toFixed(1)} years ${younger ? "younger" : "older"}`}</b><div class="note">than your real age of ${b.age}</div></div></div>
     <p class="note" style="margin:10px 0 0">${bioTrendLine(pc)}</p>
+    ${b.lifeMissing ? `<p style="margin:10px 0 0;color:${C.amber}"><b>Not complete yet:</b> tap and answer the smoking and alcohol questions. They change the number a lot.</p>` : ""}
     ${top.length ? `<p class="mlabel">Biggest wins</p><ul class="mlist">${top.map(r => `<li>${r.name}: up to ${r.gain.toFixed(1)} years back</li>`).join("")}</ul>` : ""}</button>`;
 }
 function bioSheet() {
   const b = bioAge(); if (b.bio == null) return;
-  const pc = bioPace(), cats = ["Fitness", "Heart", "Sleep"];
+  const pc = bioPace(), cats = ["Lifestyle", "Body", "Fitness", "Heart", "Sleep"];
   const row = r => r.value == null ? `<div class="bar-row" style="grid-template-columns:1fr auto"><span>${r.name}</span><span class="t">no data yet</span></div>`
     : `<div style="padding:10px 0;border-top:1px solid var(--line)"><div style="display:flex;justify-content:space-between;gap:8px"><b>${r.name}</b><b style="color:${r.years < 0 ? C.mint : r.years > .05 ? C.amber : "var(--muted)"};white-space:nowrap">${fmtY(r.years)}</b></div>
-      <div class="note">You: ${r.fmt(r.value)} ${r.unit} · target ${r.fmt(r.targetVal)} ${r.unit}${pc.since && pc.since.f[r.key] != null ? ` · 4 weeks ago ${fmtY(pc.since.f[r.key])}` : ""}</div>
-      ${r.gain > .05 ? `<p style="margin:6px 0 0;font-size:14px"><b>Fix (up to ${r.gain.toFixed(1)} years back):</b> ${r.fix}</p>` : ""}
+      <div class="note">You: ${r.life ? esc(r.txt) + (r.targetVal != null ? ` · target ${r.fmt(r.targetVal)} ${r.unit}` : "") : `${r.fmt(r.value)} ${r.unit} · target ${r.fmt(r.targetVal)} ${r.unit}`}${pc.since && pc.since.f[r.key] != null ? ` · 4 weeks ago ${fmtY(pc.since.f[r.key])}` : ""}</div>
+      ${r.life ? (r.years > .05 ? `<p style="margin:6px 0 0;font-size:14px"><b>${r.gain > .05 ? `Fix (up to ${r.gain.toFixed(1)} years back)` : "What helps"}:</b> ${r.fixText}</p>` : "") : r.gain > .05 ? `<p style="margin:6px 0 0;font-size:14px"><b>Fix (up to ${r.gain.toFixed(1)} years back):</b> ${r.fix}</p>` : ""}
       <p class="note" style="margin:4px 0 0"><a href="${r.src[1]}" target="_blank" rel="noopener" style="color:var(--mint)">${esc(r.src[0])}</a></p></div>`;
   openSheet(`<div class="stack" style="margin-top:10px"><div><div class="eyebrow">Biological age</div><h1>${b.bio.toFixed(1)} years</h1></div>
     <div class="card"><p style="margin:0">Your real age is ${b.age}. Your markers put you <b>${Math.abs(b.delta).toFixed(1)} years ${b.delta < 0 ? "younger" : "older"}</b>.
       ${pc.since ? ` Four weeks ago you were ${pc.since.bio.toFixed(1)}.` : ""}</p><p class="note" style="margin:8px 0 0">${bioTrendLine(pc)}</p>
       ${pc.series && pc.series.length > 1 ? `<div style="margin-top:10px">${spark(pc.series, C.violet)}</div>` : ""}</div>
-    ${cats.map(c => `<div class="card">${title(c, c === "Sleep" ? "moon" : c === "Heart" ? "heart" : "run", C.mint)}${b.rows.filter(r => r.cat === c).map(row).join("")}</div>`).join("")}
+    ${lifeForm()}
+    ${cats.map(c => `<div class="card">${title(c, c === "Sleep" ? "moon" : c === "Heart" ? "heart" : c === "Body" ? "scale" : c === "Lifestyle" ? "user" : "run", C.mint)}${b.rows.filter(r => r.cat === c).map(row).join("")}${c === "Body" && !b.rows.some(r => r.cat === "Body" && r.value != null) ? `<p class="note" style="margin:6px 0 0">Add an InBody scan (Body composition card) to include body fat and visceral fat.</p>` : ""}</div>`).join("")}
     <div class="card"><p class="mlabel" style="margin-top:0">How Pulse works it out</p>
-      <p style="margin:0;font-size:14px">Each marker is compared with large studies that tracked how long people lived. A higher risk of death converts to extra years, because in adults that risk roughly doubles every 8 years of age. Pulse halves every effect, because these studies show links rather than proof, and caps each marker at 4 years.${b.zoneSplit === "estimated" ? " Your fat-burn vs cardio/peak split is estimated, because Google didn't send the split." : ""}</p>
-      <p class="note" style="margin-top:8px">This is an estimate for tracking your trend, not a medical test. Body composition from your InBody and blood tests aren't included yet.</p></div>
+      <p style="margin:0;font-size:14px">Each marker is compared with large studies that tracked how long people lived. A higher risk of death converts to extra years, because in adults that risk roughly doubles every 8 years of age. Pulse counts only 65% of each effect (80% for smoking, where the evidence is strongest), because these studies show links rather than proof, and caps each marker at 4 years.${b.zoneSplit === "estimated" ? " Your fat-burn vs cardio/peak split is estimated, because Google didn't send the split." : ""}</p>
+      <p class="note" style="margin-top:8px">Based on ${b.counted} of 13 markers. This is an estimate for tracking your trend, not a medical test. Blood tests (cholesterol, blood sugar) and blood pressure aren't included.</p></div>
     <button class="btn primary" data-bio="ask">${icon("claude")} Ask Claude how to get younger</button></div>`);
 }
 document.addEventListener("click", e => {
@@ -2535,8 +2538,102 @@ function bioSummary() {
   return { note: "Pulse's own estimate: 9 markers, hazard ratios from published cohorts converted to years (11.5 × ln HR), halved for confounding, capped ±4 per marker. Positive years = older.",
     realAge: b.age, biologicalAge: Math.round(b.bio * 10) / 10, changeLast4WeeksYears: pc.change4w ?? null, paceOfAging: pc.pace != null ? Math.round(pc.pace * 100) / 100 : "not enough history yet (needs ~3 months)",
     fourWeeksAgo: pc.since ? pc.since.bio : null,
-    markers: b.rows.map(r => r.value == null ? { marker: r.name, value: null } : { marker: r.name, value: Math.round(r.value * 10) / 10, unit: r.unit, years: Math.round(r.years * 10) / 10, target: r.targetVal, yearsBackAtTarget: Math.round(r.gain * 10) / 10 }) };
+    markers: b.rows.map(r => r.value == null ? { marker: r.name, value: null } : r.life ? { marker: r.name, value: r.txt, years: Math.round(r.years * 10) / 10 } : { marker: r.name, value: Math.round(r.value * 10) / 10, unit: r.unit, years: Math.round(r.years * 10) / 10, target: r.targetVal, yearsBackAtTarget: Math.round(r.gain * 10) / 10 }) };
 }
+
+/* ---------- nap: a separate timer from Bed, so a midday nap never counts as your night ---------- */
+const NAP = {
+  active() { try { return JSON.parse(store.get("pulse.nap")); } catch { return null; } },
+  log() { try { return JSON.parse(store.get("pulse.naps")) || []; } catch { return []; } },
+  save: l => store.set("pulse.naps", JSON.stringify(l.slice(0, 60))),
+};
+function napCard() {
+  const n = NAP.active(), m = (Date.now() - n.start) / 60000;
+  return `<div class="card status" style="border-color:rgba(255,154,166,.45)"><span class="badge" style="background:rgba(255,154,166,.16)">${icon("sun", C.sky)}</span>
+    <div style="flex:1;min-width:0"><strong>Napping</strong><p>Since ${time(new Date(n.start))} · <span data-napclock>${fmtDur(m)}</span></p><p class="note" style="margin:2px 0 0">Best nap: 10 to 30 minutes. Past 30 you may wake up groggy.</p></div>
+    <button class="btn primary" data-nap="stop" style="flex:none">${icon("sun")} Awake</button></div>`;
+}
+function napAdvice(min) {
+  return min < 8 ? "Very short. Rest still helps, but most benefit starts at about 10 minutes."
+    : min <= 30 ? "A power nap: the ideal length. You get more alert without the grogginess of deep sleep."
+    : min <= 60 ? "Longer than a power nap, so you may have gone into deep sleep. Grogginess for 15 to 30 minutes is normal. Next time, try an alarm at 20 to 25 minutes."
+    : min <= 100 ? "Close to a full sleep cycle (about 90 minutes). Good if you slept badly last night, but it can make tonight's sleep start later."
+    : "A long nap. It can push back tonight's bedtime, so keep tonight's wind-down routine the same.";
+}
+function napResult(n) {
+  const min = (n.end - n.start) / 60000, hr = (S.data?.heart || []).filter(p => +p.time >= n.start && +p.time <= n.end).map(p => p.bpm);
+  const late = new Date(n.end).getHours() >= 16;
+  openSheet(`<div class="stack" style="margin-top:10px"><div><div class="eyebrow">Nap</div><h1>${fmtDur(min)}</h1></div>
+    <div class="card"><p style="margin:0">${napAdvice(min)}</p>${late ? `<p class="note" style="margin-top:8px">Naps after about 4 pm make it harder to fall asleep tonight. Earlier is better.</p>` : ""}
+    <div class="pills" style="margin-top:12px">${pill("From", time(new Date(n.start)), C.sky)}${pill("To", time(new Date(n.end)), C.sky)}${hr.length ? pill("Avg heart rate", Math.round(hr.reduce((a, b) => a + b, 0) / hr.length) + " bpm", C.pink) : ""}</div>
+    ${hr.length ? "" : `<p class="note" style="margin-top:8px">Your Air's heart readings for this nap show up after the next sync.</p>`}</div>
+    <p class="note">Naps are kept separate from your night, so they don't change last night's sleep or your bedtime.</p></div>`);
+}
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-nap]"); if (!t) return;
+  if (t.dataset.nap === "start") { if (W.active() || BED.active()) return; store.set("pulse.nap", JSON.stringify({ start: Date.now() })); render(); }
+  else if (t.dataset.nap === "stop") { const n = NAP.active(); store.set("pulse.nap", null); if (!n) return render();
+    const rec = { start: n.start, end: Date.now() }; if (rec.end - rec.start > 60000) NAP.save([rec, ...NAP.log()]); render(); napResult(rec); }
+});
+setInterval(() => { const n = NAP.active(); if (n) document.querySelectorAll("[data-napclock]").forEach(el => { el.textContent = fmtDur((Date.now() - n.start) / 60000); }); }, 30000);
+function napSummary() { return NAP.log().filter(n => Date.now() - n.end < 14 * DAY).map(n => ({ date: dayKey(n.start), start: time(new Date(n.start)), minutes: Math.round((n.end - n.start) / 60000) })); }
+
+/* ---------- biological age, part 2: your life outside the watch (smoking, alcohol) and your InBody body fat ---------- */
+const LIFE = { get() { try { return JSON.parse(store.get("pulse.life")) || {}; } catch { return {}; } } };
+// Smoking: current smokers die about 10 years earlier and have ~2 to 3× the risk of death (Jha 2013, NEJM). After quitting, the extra risk fades;
+// people who quit before 40 get most of the way back to never-smoker risk within about 3 to 10 years (Cho 2024, NEJM Evidence). Strong, causal evidence, so less shrink.
+function smokeYears(l) {
+  if (!l.smoke || l.smoke === "never") return l.smoke === "never" ? { years: 0, txt: "Never smoked" } : null;
+  const cpd = Math.max(+l.cpd || 10, 1), yrs = Math.max(+l.smokeYears || 3, .5), py = cpd / 20 * yrs; // pack-years
+  const hrNow = 1 + 1.8 * Math.min(1, .4 + py / 15);
+  const quit = l.smoke === "former" ? Math.max(+l.quitYears || 0, 0) : 0;
+  const hr = l.smoke === "current" ? hrNow : 1 + (hrNow - 1) * Math.exp(-quit / 4);
+  return { years: Math.min(8, 11.5 * Math.log(hr) * .8), py: Math.round(py * 10) / 10, quit, txt: l.smoke === "current" ? `Smoking, ${Math.round(py * 10) / 10} pack-years` : `Quit ${quit} year${quit === 1 ? "" : "s"} ago, ${Math.round(py * 10) / 10} pack-years before` };
+}
+const LIFE_FACTORS = [
+  { key: "smoking", name: "Smoking history", cat: "Lifestyle", fmt: () => "", unit: "",
+    calc: l => smokeYears(l),
+    fix: l => l.smoke === "current" ? "Quitting is the single biggest thing you can do: it's worth more years than every other marker together. Most of the extra risk goes away within a few years of quitting." : "You already did the hardest part. The extra risk keeps dropping every year you stay smoke-free, and cardio fitness speeds up lung and heart recovery. This number goes down by itself as the years since quitting go up.",
+    src: ["Jha 2013, NEJM: smokers lose 10+ years; quitting before 40 avoids about 90% of the excess risk", "https://pubmed.ncbi.nlm.nih.gov/23343063/"] },
+  { key: "alcohol", name: "Alcohol", cat: "Lifestyle", unit: "drinks/week", fmt: v => v,
+    calc: l => l.drinks === "" || l.drinks == null ? null : { value: +l.drinks, years: capY(Y(interp(+l.drinks, [[0, 0], [7, 0], [14, Math.log(1.1)], [21, Math.log(1.2)], [35, Math.log(1.4)]])), 3), txt: `${+l.drinks} drinks a week` },
+    fix: () => "Keep it under 7 drinks a week; above that risk climbs steadily. Alcohol also lowers HRV and deep sleep that same night, which you can see in Pulse.",
+    src: ["Wood 2018, Lancet: risk of death rises above about 100 g of alcohol (7 drinks) a week", "https://pubmed.ncbi.nlm.nih.gov/29676281/"] },
+  { key: "bodyfat", name: "Body fat (InBody)", cat: "Body", unit: "%", fmt: v => v.toFixed(1),
+    calc: (l, male) => { const s = IB.list().filter(x => x.pbf != null).slice(-1)[0]; if (!s) return null; const off = male ? 0 : 8;
+      return { value: s.pbf, years: capY(Y(interp(s.pbf - off, [[8, .05], [12, 0], [20, 0], [25, Math.log(1.1)], [30, Math.log(1.25)], [35, Math.log(1.45)]])), 3), txt: `${s.pbf}% on ${s.date}`, target: male ? 15 : 23 }; },
+    fix: () => "Losing fat while keeping muscle: a small calorie deficit, protein at every meal (your plan already gives you about 160 g), lifting 2 to 3 times a week, and steps. Aim for about 0.5% of body weight a week.",
+    src: ["Padwal 2016, Annals of Internal Medicine: higher body fat %, higher risk of death", "https://pubmed.ncbi.nlm.nih.gov/26954388/"] },
+  { key: "visceral", name: "Visceral (belly) fat (InBody)", cat: "Body", unit: "level", fmt: v => Math.round(v),
+    calc: () => { const s = IB.list().filter(x => x.visceral != null).slice(-1)[0]; if (!s) return null;
+      return { value: s.visceral, years: capY(Y(interp(s.visceral, [[5, 0], [9, 0], [12, Math.log(1.12)], [15, Math.log(1.3)], [20, Math.log(1.6)]])), 3), txt: `level ${s.visceral} on ${s.date}`, target: 9 }; },
+    fix: () => "Visceral fat responds fastest to cardio, sleep and cutting sugary drinks and alcohol. Under level 10 is the healthy range.",
+    src: ["Visceral fat is the fat most tied to heart disease and diabetes (Neeland 2019, Lancet Diabetes & Endocrinology)", "https://pubmed.ncbi.nlm.nih.gov/31301983/"] },
+];
+function lifeRows(male) {
+  const l = LIFE.get();
+  return LIFE_FACTORS.map(f => { const r = f.calc(l, male); if (!r) return { ...f, value: null, life: true };
+    const gain = f.key === "smoking" ? 0 : f.key === "alcohol" ? Math.max(0, r.years - capY(Y(interp(Math.min(r.value, 7), [[0, 0], [7, 0]])), 3)) : Math.max(0, r.years);
+    return { ...f, life: true, value: r.value ?? 1, years: r.years, txt: r.txt, targetVal: r.target, gain, fixText: f.fix(l) }; });
+}
+function lifeForm() {
+  const l = LIFE.get(), sel = (v, o) => o.map(([k, t]) => `<option value="${k}" ${l[v] === k ? "selected" : ""}>${t}</option>`).join("");
+  return `<div class="card" id="lifeForm">${title("About your life", "user", C.amber)}<p class="note" style="margin:0 0 10px">Your Air can't see these, but they matter more than most of what it measures. Saved on this phone only.</p>
+    <div class="stack" style="gap:10px">
+      <label class="field">Smoking<select data-life="smoke">${sel("smoke", [["", "Choose…"], ["never", "Never smoked"], ["former", "I used to smoke"], ["current", "I smoke now"]])}</select></label>
+      ${l.smoke === "former" || l.smoke === "current" ? `
+      <label class="field">Cigarettes a day (when you smoked)<input data-life="cpd" type="number" inputmode="decimal" min="0" max="80" value="${esc(l.cpd ?? "")}" placeholder="10"></label>
+      <label class="field">How many years you smoked<input data-life="smokeYears" type="number" inputmode="decimal" min="0" max="70" value="${esc(l.smokeYears ?? "")}" placeholder="5"></label>` : ""}
+      ${l.smoke === "former" ? `<label class="field">Years since you quit (0.5 = 6 months)<input data-life="quitYears" type="number" inputmode="decimal" min="0" max="70" step="0.1" value="${esc(l.quitYears ?? "")}" placeholder="1"></label>` : ""}
+      <label class="field">Alcoholic drinks in a normal week<input data-life="drinks" type="number" inputmode="numeric" min="0" max="100" value="${esc(l.drinks ?? "")}" placeholder="0"></label>
+    </div></div>`;
+}
+["input", "change"].forEach(ev => document.addEventListener(ev, e => {
+  const k = e.target.dataset?.life; if (!k) return;
+  const l = LIFE.get(); l[k] = e.target.value; store.set("pulse.life", JSON.stringify(l));
+  // redraw after the select changes, or after leaving the last box (not while moving between boxes, which would lose what you typed)
+  if (ev === "change") setTimeout(() => { if (document.activeElement?.dataset?.life && e.target.tagName !== "SELECT") return; const y = document.getElementById("sheet").scrollTop; bioSheet(); document.getElementById("sheet").scrollTop = y; const c = document.getElementById("bioCard"); if (c) c.outerHTML = bioCard(); }, 50);
+}));
 
 /* ---------- every heart reading, hour by hour ---------- */
 function rawHeartSheet(hour) {
@@ -2666,6 +2763,7 @@ function healthSummary() {
     screenTime: screenSummary(),
     bodyComposition: inbodySummary(),
     bioAge: bioSummary(),
+    naps: napSummary(),
     recoveryHistory: (() => { const t0 = startOfDay(new Date()).getTime(); return Array.from({ length: 14 }, (_, i) => t0 - (13 - i) * DAY).map(d => { const r = recoveryAt(d), y = dayContext(d - DAY); return { date: day(new Date(d)), recoveryPercent: r ? r.score : null, dayBefore: { training: y.ses, zoneMinutes: y.zm == null ? null : Math.round(y.zm), strain: y.strain, food: y.food } }; }); })(),
     physio: { area: store.get("pulse.physioArea") || null, sessions: W.sessions().filter(s => s.sport === "Hydro physio").slice(0, 10).map(s => ({ date: day(new Date(s.start)), minutes: Math.round((s.end - s.start) / 60000), painBefore: s.painBefore ?? null, painAfter: s.painAfter ?? null })) },
     muscleReadiness: Object.fromEntries(Object.entries(muscleReadiness()).map(([m, r]) => [m, { readyPercent: Math.round(r.pct * 100), hoursToGo: Math.max(0, Math.round(r.left)), lastWorkedBy: r.sport }])),
